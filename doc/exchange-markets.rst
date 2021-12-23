@@ -1240,7 +1240,13 @@ The CCXT library currently supports the following 110 cryptocurrency exchange ma
    * - .. image:: https://user-images.githubusercontent.com/51840849/87153930-f0f02200-c2c0-11ea-9c0a-40337375ae89.jpg
           :target: https://www.paymium.com/page/sign-up?referral=eDAzPoRQFMvaAB8sf-qj
           :alt: paymium
-     
+
+     - patriotexchange
+     - `Patriot Exchange <https://trade.patriotexchange.net/signup?affiliation_code=0J2SEX>`__
+     - .. image:: https://img.shields.io/badge/2-lightgray
+          :target: https://ultra-pool.gitbook.io/patriot-exchange-api-reference/source/index.html
+          :alt: API Version 2
+   
      - paymium
      - `Paymium <https://www.paymium.com/page/sign-up?referral=eDAzPoRQFMvaAB8sf-qj>`__
      - .. image:: https://img.shields.io/badge/1-lightgray
