@@ -54,8 +54,6 @@ class bw extends Exchange {
                 'fetchTradingLimits' => null,
                 'fetchTransactions' => null,
                 'fetchWithdrawals' => true,
-                'privateAPI' => null,
-                'publicAPI' => null,
                 'withdraw' => null,
             ),
             'timeframes' => array(
@@ -465,8 +463,8 @@ class bw extends Exchange {
         //         "1569303302", // $timestamp
         //         "BTC_USDT",   // $market name
         //         "ask",        // $side
-        //         "9745.08",    // $price
-        //         "0.0026"      // $amount
+        //         "9745.08",    // price
+        //         "0.0026"      // amount
         //     )
         //
         // fetchMyTrades (private)
@@ -476,9 +474,6 @@ class bw extends Exchange {
         $timestamp = $this->safe_timestamp($trade, 2);
         $priceString = $this->safe_string($trade, 5);
         $amountString = $this->safe_string($trade, 6);
-        $price = $this->parse_number($priceString);
-        $amount = $this->parse_number($amountString);
-        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $marketId = $this->safe_string($trade, 1);
         $symbol = null;
         if ($marketId !== null) {
@@ -497,7 +492,7 @@ class bw extends Exchange {
         }
         $sideString = $this->safe_string($trade, 4);
         $side = ($sideString === 'ask') ? 'sell' : 'buy';
-        return array(
+        return $this->safe_trade(array(
             'id' => null,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
@@ -506,12 +501,12 @@ class bw extends Exchange {
             'type' => 'limit',
             'side' => $side,
             'takerOrMaker' => null,
-            'price' => $price,
-            'amount' => $amount,
-            'cost' => $cost,
+            'price' => $priceString,
+            'amount' => $amountString,
+            'cost' => null,
             'fee' => null,
             'info' => $trade,
-        );
+        ), $market);
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
@@ -631,7 +626,7 @@ class bw extends Exchange {
             $account['used'] = $this->safe_string($balance, 'freeze');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {

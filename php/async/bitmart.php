@@ -240,7 +240,9 @@ class bitmart extends Exchange {
                     '50022' => '\\ccxt\\ExchangeNotAvailable', // 400, Service unavailable
                     '50023' => '\\ccxt\\BadSymbol', // 400, This Symbol can't place order by api
                     '50029' => '\\ccxt\\InvalidOrder', // array("message":"param not match : size * price >=1000","code":50029,"trace":"f931f030-b692-401b-a0c5-65edbeadc598","data":array())
+                    '50030' => '\\ccxt\\InvalidOrder', // array("message":"Order is already canceled","code":50030,"trace":"8d6f64ee-ad26-45a4-9efd-1080f9fca1fa","data":array())
                     '53000' => '\\ccxt\\AccountSuspended', // 403, Your account is frozen due to security policies. Please contact customer service
+                    '53001' => '\\ccxt\\AccountSuspended', // array("message":"Your kyc country is restricted. Please contact customer service.","code":53001,"trace":"8b445940-c123-4de9-86d7-73c5be2e7a24","data":array())
                     '57001' => '\\ccxt\\BadRequest', // 405, Method Not Allowed
                     '58001' => '\\ccxt\\BadRequest', // 415, Unsupported Media Type
                     '59001' => '\\ccxt\\ExchangeError', // 500, User account not found
@@ -286,6 +288,8 @@ class bitmart extends Exchange {
             'commonCurrencies' => array(
                 'COT' => 'Community Coin',
                 'CPC' => 'CPCoin',
+                'DMS' => 'DimSum', // conflict with Dragon Mainland Shards
+                'FOX' => 'Fox Finance',
                 'GDT' => 'Gorilla Diamond',
                 '$HERO' => 'Step Hero',
                 '$PAC' => 'PAC',
@@ -294,6 +298,7 @@ class bitmart extends Exchange {
                 'ONE' => 'Menlo One',
                 'PLA' => 'Plair',
                 'TCT' => 'TacoCat Token',
+                'TRU' => 'Truebit', // conflict with TrueFi
             ),
             'options' => array(
                 'networks' => array(
@@ -437,7 +442,7 @@ class bitmart extends Exchange {
             $pricePrecision = $this->safe_integer($market, 'price_max_precision');
             $precision = array(
                 'amount' => $this->safe_number($market, 'base_min_size'),
-                'price' => $this->parse_number($this->decimal_to_precision(pow(10, -$pricePrecision), ROUND, 12)),
+                'price' => $this->parse_number($this->decimal_to_precision(pow(10, -$pricePrecision), ROUND, 14)),
             );
             $minBuyCost = $this->safe_number($market, 'min_buy_amount');
             $minSellCost = $this->safe_number($market, 'min_sell_amount');
@@ -692,8 +697,8 @@ class bitmart extends Exchange {
         if ($percentage === null) {
             $percentage = $this->safe_number($ticker, 'price_change_percent_24h');
         }
-        $baseVolume = $this->safe_number_2($ticker, 'base_volume_24h', 'base_coin_volume');
-        $quoteVolume = $this->safe_number_2($ticker, 'quote_volume_24h', 'quote_coin_volume');
+        $baseVolume = $this->safe_number_2($ticker, 'base_coin_volume', 'base_volume_24h');
+        $quoteVolume = $this->safe_number_2($ticker, 'quote_coin_volume', 'quote_volume_24h');
         $quoteVolume = $this->safe_number($ticker, 'volume_24h', $quoteVolume);
         $open = $this->safe_number_2($ticker, 'open_24h', 'open');
         $average = null;
@@ -1492,7 +1497,7 @@ class bitmart extends Exchange {
             $account['used'] = $this->safe_string_2($balance, 'frozen', 'freeze_vol');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function parse_order($order, $market = null) {
@@ -1866,6 +1871,8 @@ class bitmart extends Exchange {
                 $request['status'] = 9;
             } else if ($status === 'closed') {
                 $request['status'] = 6;
+            } else if ($status === 'canceled') {
+                $request['status'] = 8;
             } else {
                 $request['status'] = $status;
             }
@@ -1959,6 +1966,10 @@ class bitmart extends Exchange {
 
     public function fetch_closed_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
         return yield $this->fetch_orders_by_status('closed', $symbol, $since, $limit, $params);
+    }
+
+    public function fetch_canceled_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        return yield $this->fetch_orders_by_status('canceled', $symbol, $since, $limit, $params);
     }
 
     public function fetch_orders($symbol = null, $since = null, $limit = null, $params = array ()) {

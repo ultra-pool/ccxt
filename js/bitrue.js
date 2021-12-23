@@ -36,7 +36,6 @@ module.exports = class bitrue extends Exchange {
                 'fetchFundingRateHistory': false,
                 'fetchFundingRates': false,
                 'fetchIndexOHLCV': false,
-                'fetchIsolatedPositions': false,
                 'fetchMarkets': true,
                 'fetchMarkOHLCV': false,
                 'fetchMyTrades': true,
@@ -47,7 +46,7 @@ module.exports = class bitrue extends Exchange {
                 'fetchOrders': false,
                 'fetchPositions': false,
                 'fetchPremiumIndexOHLCV': false,
-                'fetchStatus': false,
+                'fetchStatus': true,
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTime': true,
@@ -326,6 +325,18 @@ module.exports = class bitrue extends Exchange {
 
     nonce () {
         return this.milliseconds () - this.options['timeDifference'];
+    }
+
+    async fetchStatus (params = {}) {
+        const response = await this.v1PublicGetPing (params);
+        const keys = Object.keys (response);
+        const keysLength = keys.length;
+        const formattedStatus = keysLength ? 'maintenance' : 'ok';
+        this.status = this.extend (this.status, {
+            'status': formattedStatus,
+            'updated': this.milliseconds (),
+        });
+        return this.status;
     }
 
     async fetchTime (params = {}) {
@@ -673,7 +684,7 @@ module.exports = class bitrue extends Exchange {
         }
         result['timestamp'] = timestamp;
         result['datetime'] = this.iso8601 (timestamp);
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {

@@ -150,6 +150,7 @@ class yobit extends Exchange {
                 'MASK' => 'Yobit MASK',
                 'MDT' => 'Midnight',
                 'MIS' => 'MIScoin',
+                'MM' => 'MasterMint', // conflict with MilliMeter
                 'NAV' => 'NavajoCoin',
                 'NBT' => 'NiceBytes',
                 'OMG' => 'OMGame',
@@ -176,6 +177,7 @@ class yobit extends Exchange {
                 'UST' => 'Uservice',
                 'VOL' => 'VolumeCoin',
                 'XIN' => 'XINCoin',
+                'XMT' => 'SummitCoin',
                 'XRA' => 'Ratecoin',
             ),
             'options' => array(
@@ -265,7 +267,7 @@ class yobit extends Exchange {
             $account['total'] = $this->safe_string($total, $currencyId);
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function fetch_markets($params = array ()) {

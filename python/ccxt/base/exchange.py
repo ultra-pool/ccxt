@@ -4,7 +4,7 @@
 
 # -----------------------------------------------------------------------------
 
-__version__ = '1.62.50'
+__version__ = '1.64.76'
 
 # -----------------------------------------------------------------------------
 
@@ -175,6 +175,10 @@ class Exchange(object):
     precision = None
     exceptions = None
     limits = {
+        'leverage': {
+            'min': None,
+            'max': None,
+        },
         'amount': {
             'min': None,
             'max': None,
@@ -250,49 +254,86 @@ class Exchange(object):
 
     # API method metainfo
     has = {
-        'loadMarkets': True,
-        'cancelAllOrders': False,
+        'publicAPI': True,
+        'privateAPI': True,
+        'margin': None,
+        'swap': None,
+        'future': None,
+        'addMargin': None,
+        'cancelAllOrders': None,
         'cancelOrder': True,
-        'cancelOrders': False,
-        'CORS': False,
-        'createDepositAddress': False,
+        'cancelOrders': None,
+        'CORS': None,
+        'createDepositAddress': None,
         'createLimitOrder': True,
         'createMarketOrder': True,
         'createOrder': True,
-        'deposit': False,
+        'deposit': None,
         'editOrder': 'emulated',
+        'fetchAccounts': None,
         'fetchBalance': True,
-        'fetchClosedOrders': False,
-        'fetchCurrencies': False,
-        'fetchDepositAddress': False,
-        'fetchDeposits': False,
+        'fetchBidsAsks': None,
+        'fetchBorrowRate': None,
+        'fetchBorrowRateHistory': None,
+        'fetchBorrowRatesPerSymbol': None,
+        'fetchBorrowRates': None,
+        'fetchCanceledOrders': None,
+        'fetchClosedOrder': None,
+        'fetchClosedOrders': None,
+        'fetchCurrencies': 'emulated',
+        'fetchDeposit': None,
+        'fetchDepositAddress': None,
+        'fetchDepositAddresses': None,
+        'fetchDepositAddressesByNetwork': None,
+        'fetchDeposits': None,
+        'fetchFundingFee': None,
+        'fetchFundingFees': None,
+        'fetchFundingHistory': None,
+        'fetchFundingRate': None,
+        'fetchFundingRateHistory': None,
+        'fetchFundingRates': None,
+        'fetchIndexOHLCV': None,
         'fetchL2OrderBook': True,
-        'fetchLedger': False,
+        'fetchLedger': None,
+        'fetchLedgerEntry': None,
         'fetchMarkets': True,
-        'fetchMyTrades': False,
+        'fetchMarkOHLCV': None,
+        'fetchMyTrades': None,
         'fetchOHLCV': 'emulated',
-        'fetchOpenOrders': False,
-        'fetchOrder': False,
+        'fetchOpenOrder': None,
+        'fetchOpenOrders': None,
+        'fetchOrder': None,
         'fetchOrderBook': True,
-        'fetchOrderBooks': False,
-        'fetchOrders': False,
-        'fetchOrderTrades': False,
+        'fetchOrderBooks': None,
+        'fetchOrders': None,
+        'fetchOrderTrades': None,
+        'fetchPosition': None,
+        'fetchPositions': None,
+        'fetchPositionsRisk': None,
+        'fetchPremiumIndexOHLCV': None,
         'fetchStatus': 'emulated',
         'fetchTicker': True,
-        'fetchTickers': False,
-        'fetchTime': False,
+        'fetchTickers': None,
+        'fetchTime': None,
         'fetchTrades': True,
-        'fetchTradingFee': False,
-        'fetchTradingFees': False,
-        'fetchFundingFee': False,
-        'fetchFundingFees': False,
-        'fetchTradingLimits': False,
-        'fetchTransactions': False,
-        'fetchWithdrawals': False,
-        'privateAPI': True,
-        'publicAPI': True,
-        'signIn': False,
-        'withdraw': False,
+        'fetchTradingFee': None,
+        'fetchTradingFees': None,
+        'fetchTradingLimits': None,
+        'fetchTransactions': None,
+        'fetchTransfers': None,
+        'fetchWithdrawAddress': None,
+        'fetchWithdrawAddressesByNetwork': None,
+        'fetchWithdrawal': None,
+        'fetchWithdrawals': None,
+        'loadLeverageBrackets': None,
+        'loadMarkets': True,
+        'reduceMargin': None,
+        'setLeverage': None,
+        'setMarginMode': None,
+        'setPositionMode': None,
+        'signIn': None,
+        'transfer': None,
+        'withdraw': None,
     }
     precisionMode = DECIMAL_PLACES
     paddingMode = NO_PADDING
@@ -572,7 +613,7 @@ class Exchange(object):
         url = self.proxy + url
 
         if self.verbose:
-            self.log("\nRequest:", method, url, request_headers, body)
+            self.log("\nfetch Request:", self.id, method, url, "RequestHeaders:", request_headers, "RequestBody:", body)
         self.logger.debug("%s %s, Request: %s %s", method, url, request_headers, body)
 
         request_body = body
@@ -610,7 +651,7 @@ class Exchange(object):
             if self.enableLastResponseHeaders:
                 self.last_response_headers = headers
             if self.verbose:
-                self.log("\nResponse:", method, url, http_status_code, headers, http_response)
+                self.log("\nfetch Response:", self.id, method, url, http_status_code, "ResponseHeaders:", headers, "ResponseBody:", http_response)
             self.logger.debug("%s %s, Response: %s %s %s", method, url, http_status_code, headers, http_response)
             response.raise_for_status()
 
@@ -908,6 +949,10 @@ class Exchange(object):
     @staticmethod
     def sort_by(array, key, descending=False):
         return sorted(array, key=lambda k: k[key] if k[key] is not None else "", reverse=descending)
+
+    @staticmethod
+    def sort_by_2(array, key1, key2, descending=False):
+        return sorted(array, key=lambda k: (k[key1] if k[key1] is not None else "", k[key2] if k[key2] is not None else ""), reverse=descending)
 
     @staticmethod
     def array_concat(a, b):
@@ -1418,7 +1463,7 @@ class Exchange(object):
                     return self.set_markets(self.markets)
                 return self.markets
         currencies = None
-        if self.has['fetchCurrencies']:
+        if self.has['fetchCurrencies'] is True:
             currencies = self.fetch_currencies()
         markets = self.fetch_markets(params)
         return self.set_markets(markets, currencies)
@@ -1608,7 +1653,7 @@ class Exchange(object):
             'nonce': None,
         }
 
-    def parse_balance(self, balance, legacy=False):
+    def safe_balance(self, balance, legacy=False):
         currencies = self.omit(balance, ['info', 'timestamp', 'datetime', 'free', 'used', 'total']).keys()
         balance['free'] = {}
         balance['used'] = {}
@@ -1857,7 +1902,7 @@ class Exchange(object):
     def parse_trades(self, trades, market=None, since=None, limit=None, params={}):
         array = self.to_array(trades)
         array = [self.extend(self.parse_trade(trade, market), params) for trade in array]
-        array = self.sort_by(array, 'timestamp')
+        array = self.sort_by_2(array, 'timestamp', 'id')
         symbol = market['symbol'] if market else None
         tail = since is None
         return self.filter_by_symbol_since_limit(array, symbol, since, limit, tail)
@@ -2269,7 +2314,7 @@ class Exchange(object):
         #
         #     [
         #         {'currency': 'BTC', 'cost': '0.3'  },
-        #         {'currency': 'BTC', 'cost': '0.7', 'rate': '0.00123'},
+        #         {'currency': 'BTC', 'cost': '0.6', 'rate': '0.00123'},
         #         {'currency': 'BTC', 'cost': '0.5', 'rate': '0.00456'},
         #         {'currency': 'USDT', 'cost': '12.3456'},
         #     ]
@@ -2278,7 +2323,7 @@ class Exchange(object):
         #
         #     [
         #         {'currency': 'BTC', 'cost': 0.3  },
-        #         {'currency': 'BTC', 'cost': 0.7, 'rate': 0.00123},
+        #         {'currency': 'BTC', 'cost': 0.6, 'rate': 0.00123},
         #         {'currency': 'BTC', 'cost': 0.5, 'rate': 0.00456},
         #         {'currency': 'USDT', 'cost': 12.3456},
         #     ]
@@ -2345,9 +2390,9 @@ class Exchange(object):
             reducedFees = self.reduce_fees_by_currency(fees, True) if self.reduceFees else fees
             reducedLength = len(reducedFees)
             for i in range(0, reducedLength):
-                reducedFees[i]['cost'] = self.parse_number(reducedFees[i]['cost'])
+                reducedFees[i]['cost'] = self.safe_number(reducedFees[i], 'cost')
             if not parseFee and (reducedLength == 0):
-                fee['cost'] = self.parse_number(self.safe_string(fee, 'cost'))
+                fee['cost'] = self.safe_number(fee, 'cost')
                 reducedFees.append(fee)
             if parseFees:
                 trade['fees'] = reducedFees
@@ -2355,7 +2400,7 @@ class Exchange(object):
                 trade['fee'] = reducedFees[0]
             tradeFee = self.safe_value(trade, 'fee')
             if tradeFee is not None:
-                tradeFee['cost'] = self.parse_number(self.safe_string(tradeFee, 'cost'))
+                tradeFee['cost'] = self.safe_number(tradeFee, 'cost')
                 trade['fee'] = tradeFee
         trade['amount'] = self.parse_number(amount)
         trade['price'] = self.parse_number(price)
@@ -2473,7 +2518,8 @@ class Exchange(object):
         parseFilled = (filled is None)
         parseCost = (cost is None)
         parseLastTradeTimeTimestamp = (lastTradeTimeTimestamp is None)
-        parseFee = self.safe_value(order, 'fee') is None
+        fee = self.safe_value(order, 'fee')
+        parseFee = (fee is None)
         parseFees = self.safe_value(order, 'fees') is None
         shouldParseFees = parseFee or parseFees
         fees = self.safe_value(order, 'fees', [])
@@ -2525,7 +2571,8 @@ class Exchange(object):
             for i in range(0, reducedLength):
                 reducedFees[i]['cost'] = self.parse_number(reducedFees[i]['cost'])
             if not parseFee and (reducedLength == 0):
-                reducedFees.append(order['fee'])
+                fee['cost'] = self.safe_number(fee, 'cost')
+                reducedFees.append(fee)
             if parseFees:
                 order['fees'] = reducedFees
             if parseFee and (reducedLength == 1):
@@ -2554,7 +2601,7 @@ class Exchange(object):
                 multiplyPrice = price
             else:
                 multiplyPrice = average
-            # contract trading )
+            # contract trading
             contractSize = self.safe_string(market, 'contractSize')
             if contractSize is not None:
                 inverse = self.safe_value(market, 'inverse', False)
@@ -2633,3 +2680,20 @@ class Exchange(object):
             return mapping[key]
         else:
             raise NotSupported(self.id + ' ' + key + ' does not have a value in mapping')
+
+    def fetch_borrow_rate(self, code, params={}):
+        self.load_markets()
+        if not self.has['fetchBorrowRates']:
+            raise NotSupported(self.id + 'fetchBorrowRate() is not supported yet')
+        borrow_rates = self.fetch_borrow_rates(params)
+        rate = self.safe_value(borrow_rates, code)
+        if rate is None:
+            raise ExchangeError(self.id + 'fetchBorrowRate() could not find the borrow rate for currency code ' + code)
+        return rate
+
+    def handle_market_type_and_params(self, method_name, market=None, params={}):
+        default_type = self.safe_string_2(self.options, method_name, 'defaultType', 'spot')
+        market_type = default_type if market is None else market['type']
+        type = self.safe_string(params, 'type', market_type)
+        params = self.omit(params, 'type')
+        return [type, params]

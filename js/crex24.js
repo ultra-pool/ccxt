@@ -5,7 +5,6 @@
 const Exchange = require ('./base/Exchange');
 const { ExchangeError, BadRequest, InvalidNonce, RequestTimeout, ExchangeNotAvailable, InsufficientFunds, OrderNotFound, InvalidOrder, DDoSProtection, AuthenticationError, BadSymbol, AccountSuspended } = require ('./base/errors');
 const { TICK_SIZE } = require ('./base/functions/number');
-const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -137,6 +136,7 @@ module.exports = class crex24 extends Exchange {
                 'BULL': 'BuySell',
                 'CLC': 'CaluraCoin',
                 'CREDIT': 'TerraCredit',
+                'DMS': 'Documentchain', // conflict with Dragon Mainland Shards
                 'EGG': 'NestEGG Coin',
                 'EPS': 'Epanus',  // conflict with EPS Ellipsis https://github.com/ccxt/ccxt/issues/8909
                 'FUND': 'FUNDChains',
@@ -479,7 +479,7 @@ module.exports = class crex24 extends Exchange {
             account['used'] = this.safeString (balance, 'reserved');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -647,9 +647,6 @@ module.exports = class crex24 extends Exchange {
         const timestamp = this.parse8601 (this.safeString (trade, 'timestamp'));
         const priceString = this.safeString (trade, 'price');
         const amountString = this.safeString (trade, 'volume');
-        const price = this.parseNumber (priceString);
-        const amount = this.parseNumber (amountString);
-        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const id = this.safeString (trade, 'id');
         const side = this.safeString (trade, 'side');
         const orderId = this.safeString (trade, 'orderId');
@@ -658,15 +655,15 @@ module.exports = class crex24 extends Exchange {
         let fee = undefined;
         const feeCurrencyId = this.safeString (trade, 'feeCurrency');
         const feeCode = this.safeCurrencyCode (feeCurrencyId);
-        const feeCost = this.safeNumber (trade, 'fee');
-        if (feeCost !== undefined) {
+        const feeCostString = this.safeString (trade, 'fee');
+        if (feeCostString !== undefined) {
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCode,
             };
         }
         const takerOrMaker = undefined;
-        return {
+        return this.safeTrade ({
             'info': trade,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
@@ -676,11 +673,11 @@ module.exports = class crex24 extends Exchange {
             'type': undefined,
             'takerOrMaker': takerOrMaker,
             'side': side,
-            'price': price,
-            'cost': cost,
-            'amount': amount,
+            'price': priceString,
+            'cost': undefined,
+            'amount': amountString,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchTrades (symbol, since = undefined, limit = undefined, params = {}) {
@@ -792,19 +789,16 @@ module.exports = class crex24 extends Exchange {
         const marketId = this.safeString (order, 'instrument');
         const symbol = this.safeSymbol (marketId, market, '-');
         const timestamp = this.parse8601 (this.safeString (order, 'timestamp'));
-        const price = this.safeNumber (order, 'price');
-        const amount = this.safeNumber (order, 'volume');
-        const remaining = this.safeNumber (order, 'remainingVolume');
+        const price = this.safeString (order, 'price');
+        const amount = this.safeString (order, 'volume');
+        const remaining = this.safeString (order, 'remainingVolume');
         const lastTradeTimestamp = this.parse8601 (this.safeString (order, 'lastUpdate'));
         const id = this.safeString (order, 'id');
         const type = this.safeString (order, 'type');
         const side = this.safeString (order, 'side');
-        const fee = undefined;
-        const trades = undefined;
-        const average = undefined;
         const timeInForce = this.safeString (order, 'timeInForce');
         const stopPrice = this.safeNumber (order, 'stopPrice');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -819,13 +813,13 @@ module.exports = class crex24 extends Exchange {
             'stopPrice': stopPrice,
             'amount': amount,
             'cost': undefined,
-            'average': average,
+            'average': undefined,
             'filled': undefined,
             'remaining': remaining,
             'status': status,
-            'fee': fee,
-            'trades': trades,
-        });
+            'fee': undefined,
+            'trades': undefined,
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -1128,6 +1122,42 @@ module.exports = class crex24 extends Exchange {
         //     ]
         //
         return response;
+    }
+
+    async fetchOrderTrades (id, symbol = undefined, since = undefined, limit = undefined, params = {}) {
+        await this.loadMarkets ();
+        const request = {
+            'id': id,
+        };
+        const response = await this.tradingGetOrderTrades (this.extend (request, params));
+        //
+        //     [
+        //         {
+        //             "id": 3005866,
+        //             "orderId": 468533093,
+        //             "timestamp": "2018-06-02T16:26:27Z",
+        //             "instrument": "BCH-ETH",
+        //             "side": "buy",
+        //             "price": 1.78882,
+        //             "volume": 0.027,
+        //             "fee": 0.0000483,
+        //             "feeCurrency": "ETH"
+        //         },
+        //         {
+        //             "id": 3005812,
+        //             "orderId": 468515771,
+        //             "timestamp": "2018-06-02T16:16:05Z",
+        //             "instrument": "ETC-BTC",
+        //             "side": "sell",
+        //             "price": 0.00210958,
+        //             "volume": 0.05994006,
+        //             "fee": -0.000000063224,
+        //             "feeCurrency": "BTC"
+        //         },
+        //         ...
+        //     ]
+        //
+        return this.parseTrades (response, undefined, since, limit);
     }
 
     async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {

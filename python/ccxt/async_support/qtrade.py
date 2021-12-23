@@ -699,7 +699,7 @@ class qtrade(Exchange):
             account = result[code] if (code in result) else self.account()
             account['used'] = self.safe_string(balance, 'balance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         if type != 'limit':
@@ -824,9 +824,9 @@ class qtrade(Exchange):
             parts = sideType.split('_')
             side = self.safe_string(parts, 0)
             orderType = self.safe_string(parts, 1)
-        price = self.safe_number(order, 'price')
-        amount = self.safe_number(order, 'market_amount')
-        remaining = self.safe_number(order, 'market_amount_remaining')
+        price = self.safe_string(order, 'price')
+        amount = self.safe_string(order, 'market_amount')
+        remaining = self.safe_string(order, 'market_amount_remaining')
         open = self.safe_value(order, 'open', False)
         closeReason = self.safe_string(order, 'close_reason')
         status = None
@@ -840,12 +840,7 @@ class qtrade(Exchange):
         market = self.safe_market(marketId, market, '_')
         symbol = market['symbol']
         rawTrades = self.safe_value(order, 'trades', [])
-        parsedTrades = self.parse_trades(rawTrades, market, None, None, {
-            'order': id,
-            'side': side,
-            'type': orderType,
-        })
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -867,8 +862,8 @@ class qtrade(Exchange):
             'fee': None,
             'fees': None,
             'cost': None,
-            'trades': parsedTrades,
-        })
+            'trades': rawTrades,
+        }, market)
 
     async def cancel_order(self, id, symbol=None, params={}):
         request = {

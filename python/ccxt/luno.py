@@ -35,7 +35,6 @@ class luno(Exchange):
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTrades': True,
-                'fetchTradingFee': True,
                 'fetchTradingFees': True,
             },
             'urls': {
@@ -230,7 +229,7 @@ class luno(Exchange):
                 account['used'] = reservedUnconfirmed
                 account['total'] = balanceUnconfirmed
                 result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()

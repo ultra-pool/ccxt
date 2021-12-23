@@ -21,7 +21,6 @@ module.exports = class indodax extends Exchange {
                 'createOrder': true,
                 'fetchBalance': true,
                 'fetchClosedOrders': true,
-                'fetchCurrencies': undefined,
                 'fetchMarkets': true,
                 'fetchMyTrades': undefined,
                 'fetchOpenOrders': true,
@@ -258,7 +257,7 @@ module.exports = class indodax extends Exchange {
             account['used'] = this.safeString (used, currencyId);
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {

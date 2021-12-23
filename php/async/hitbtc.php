@@ -29,6 +29,8 @@ class hitbtc extends Exchange {
                 'createOrder' => true,
                 'editOrder' => true,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRates' => false,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
@@ -222,6 +224,7 @@ class hitbtc extends Exchange {
                 'STX' => 'STOX',
                 'TV' => 'Tokenville',
                 'USD' => 'USDT',
+                'XMT' => 'MTL',
                 'XPNT' => 'PNT',
             ),
             'exceptions' => array(
@@ -432,13 +435,8 @@ class hitbtc extends Exchange {
         return $result;
     }
 
-    public function fetch_trading_fee($symbol, $params = array ()) {
-        yield $this->load_markets();
-        $market = $this->market($symbol);
-        $request = array_merge(array(
-            'symbol' => $market['id'],
-        ), $this->omit($params, 'symbol'));
-        $response = yield $this->privateGetTradingFeeSymbol ($request);
+    public function parse_trading_fee($fee, $market = null) {
+        //
         //
         //     {
         //         takeLiquidityRate => '0.001',
@@ -446,10 +444,27 @@ class hitbtc extends Exchange {
         //     }
         //
         return array(
-            'info' => $response,
-            'maker' => $this->safe_number($response, 'provideLiquidityRate'),
-            'taker' => $this->safe_number($response, 'takeLiquidityRate'),
+            'info' => $fee,
+            'symbol' => $this->safe_symbol(null, $market),
+            'maker' => $this->safe_number($fee, 'provideLiquidityRate'),
+            'taker' => $this->safe_number($fee, 'takeLiquidityRate'),
         );
+    }
+
+    public function fetch_trading_fee($symbol, $params = array ()) {
+        yield $this->load_markets();
+        $market = $this->market($symbol);
+        $request = array(
+            'symbol' => $market['id'],
+        );
+        $response = yield $this->privateGetTradingFeeSymbol ($request);
+        //
+        //     {
+        //         takeLiquidityRate => '0.001',
+        //         provideLiquidityRate => '-0.0001'
+        //     }
+        //
+        return $this->parse_trading_fee($response, $market);
     }
 
     public function fetch_balance($params = array ()) {
@@ -484,7 +499,7 @@ class hitbtc extends Exchange {
             $account['used'] = $this->safe_string($balance, 'reserved');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function parse_ohlcv($ohlcv, $market = null) {

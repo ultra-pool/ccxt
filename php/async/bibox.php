@@ -27,6 +27,8 @@ class bibox extends Exchange {
                 'createMarketOrder' => null, // or they will return https://github.com/ccxt/ccxt/issues/2338
                 'createOrder' => true,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRates' => false,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
@@ -42,7 +44,6 @@ class bibox extends Exchange {
                 'fetchTickers' => true,
                 'fetchTrades' => true,
                 'fetchWithdrawals' => true,
-                'publicAPI' => null,
                 'withdraw' => true,
             ),
             'timeframes' => array(
@@ -145,9 +146,6 @@ class bibox extends Exchange {
                 'PAI' => 'PCHAIN',
                 'REVO' => 'Revo Network',
                 'TERN' => 'Ternio-ERC20',
-            ),
-            'options' => array(
-                'fetchCurrencies' => 'fetchCurrenciesPrivate', // or 'fetchCurrenciesPrivate' with apiKey and secret
             ),
         ));
     }
@@ -457,8 +455,11 @@ class bibox extends Exchange {
     }
 
     public function fetch_currencies($params = array ()) {
-        $method = $this->safe_string($this->options, 'fetchCurrencies', 'fetchCurrenciesPublic');
-        return yield $this->$method ($params);
+        if ($this->check_required_credentials(false)) {
+            return yield $this->fetch_currencies_private($params);
+        } else {
+            return yield $this->fetch_currencies_public($params);
+        }
     }
 
     public function fetch_currencies_public($params = array ()) {
@@ -521,7 +522,7 @@ class bibox extends Exchange {
     }
 
     public function fetch_currencies_private($params = array ()) {
-        if (!$this->apiKey || !$this->secret) {
+        if (!$this->check_required_credentials(false)) {
             throw new AuthenticationError($this->id . " fetchCurrencies is an authenticated endpoint, therefore it requires 'apiKey' and 'secret' credentials. If you don't need $currency details, set exchange.has['fetchCurrencies'] = false before calling its methods.");
         }
         $request = array(
@@ -660,7 +661,7 @@ class bibox extends Exchange {
             $account['used'] = $this->safe_string($balance, 'freeze');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function fetch_deposits($code = null, $since = null, $limit = null, $params = array ()) {

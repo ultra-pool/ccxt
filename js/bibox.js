@@ -22,6 +22,8 @@ module.exports = class bibox extends Exchange {
                 'createMarketOrder': undefined, // or they will return https://github.com/ccxt/ccxt/issues/2338
                 'createOrder': true,
                 'fetchBalance': true,
+                'fetchBorrowRate': false,
+                'fetchBorrowRates': false,
                 'fetchClosedOrders': true,
                 'fetchCurrencies': true,
                 'fetchDepositAddress': true,
@@ -37,7 +39,6 @@ module.exports = class bibox extends Exchange {
                 'fetchTickers': true,
                 'fetchTrades': true,
                 'fetchWithdrawals': true,
-                'publicAPI': undefined,
                 'withdraw': true,
             },
             'timeframes': {
@@ -140,9 +141,6 @@ module.exports = class bibox extends Exchange {
                 'PAI': 'PCHAIN',
                 'REVO': 'Revo Network',
                 'TERN': 'Ternio-ERC20',
-            },
-            'options': {
-                'fetchCurrencies': 'fetchCurrenciesPrivate', // or 'fetchCurrenciesPrivate' with apiKey and secret
             },
         });
     }
@@ -452,8 +450,11 @@ module.exports = class bibox extends Exchange {
     }
 
     async fetchCurrencies (params = {}) {
-        const method = this.safeString (this.options, 'fetchCurrencies', 'fetchCurrenciesPublic');
-        return await this[method] (params);
+        if (this.checkRequiredCredentials (false)) {
+            return await this.fetchCurrenciesPrivate (params);
+        } else {
+            return await this.fetchCurrenciesPublic (params);
+        }
     }
 
     async fetchCurrenciesPublic (params = {}) {
@@ -516,7 +517,7 @@ module.exports = class bibox extends Exchange {
     }
 
     async fetchCurrenciesPrivate (params = {}) {
-        if (!this.apiKey || !this.secret) {
+        if (!this.checkRequiredCredentials (false)) {
             throw new AuthenticationError (this.id + " fetchCurrencies is an authenticated endpoint, therefore it requires 'apiKey' and 'secret' credentials. If you don't need currency details, set exchange.has['fetchCurrencies'] = false before calling its methods.");
         }
         const request = {
@@ -655,7 +656,7 @@ module.exports = class bibox extends Exchange {
             account['used'] = this.safeString (balance, 'freeze');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     async fetchDeposits (code = undefined, since = undefined, limit = undefined, params = {}) {

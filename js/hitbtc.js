@@ -25,6 +25,8 @@ module.exports = class hitbtc extends Exchange {
                 'createOrder': true,
                 'editOrder': true,
                 'fetchBalance': true,
+                'fetchBorrowRate': false,
+                'fetchBorrowRates': false,
                 'fetchClosedOrders': true,
                 'fetchCurrencies': true,
                 'fetchDepositAddress': true,
@@ -218,6 +220,7 @@ module.exports = class hitbtc extends Exchange {
                 'STX': 'STOX',
                 'TV': 'Tokenville',
                 'USD': 'USDT',
+                'XMT': 'MTL',
                 'XPNT': 'PNT',
             },
             'exceptions': {
@@ -428,13 +431,8 @@ module.exports = class hitbtc extends Exchange {
         return result;
     }
 
-    async fetchTradingFee (symbol, params = {}) {
-        await this.loadMarkets ();
-        const market = this.market (symbol);
-        const request = this.extend ({
-            'symbol': market['id'],
-        }, this.omit (params, 'symbol'));
-        const response = await this.privateGetTradingFeeSymbol (request);
+    parseTradingFee (fee, market = undefined) {
+        //
         //
         //     {
         //         takeLiquidityRate: '0.001',
@@ -442,10 +440,27 @@ module.exports = class hitbtc extends Exchange {
         //     }
         //
         return {
-            'info': response,
-            'maker': this.safeNumber (response, 'provideLiquidityRate'),
-            'taker': this.safeNumber (response, 'takeLiquidityRate'),
+            'info': fee,
+            'symbol': this.safeSymbol (undefined, market),
+            'maker': this.safeNumber (fee, 'provideLiquidityRate'),
+            'taker': this.safeNumber (fee, 'takeLiquidityRate'),
         };
+    }
+
+    async fetchTradingFee (symbol, params = {}) {
+        await this.loadMarkets ();
+        const market = this.market (symbol);
+        const request = {
+            'symbol': market['id'],
+        };
+        const response = await this.privateGetTradingFeeSymbol (request);
+        //
+        //     {
+        //         takeLiquidityRate: '0.001',
+        //         provideLiquidityRate: '-0.0001'
+        //     }
+        //
+        return this.parseTradingFee (response, market);
     }
 
     async fetchBalance (params = {}) {
@@ -480,7 +495,7 @@ module.exports = class hitbtc extends Exchange {
             account['used'] = this.safeString (balance, 'reserved');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     parseOHLCV (ohlcv, market = undefined) {

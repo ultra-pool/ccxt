@@ -149,6 +149,7 @@ module.exports = class currencycom extends Exchange {
                 'CAR': 'Avis Budget Group Inc',
                 'EDU': 'New Oriental Education & Technology Group Inc',
                 'ETN': 'Eaton',
+                'FOX': 'Fox Corporation',
                 'IQ': 'iQIYI',
                 'PLAY': "Dave & Buster's Entertainment",
             },
@@ -434,7 +435,7 @@ module.exports = class currencycom extends Exchange {
             account['used'] = this.safeString (balance, 'locked');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     async fetchBalance (params = {}) {
@@ -697,9 +698,6 @@ module.exports = class currencycom extends Exchange {
         const timestamp = this.safeInteger2 (trade, 'T', 'time');
         const priceString = this.safeString2 (trade, 'p', 'price');
         const amountString = this.safeString2 (trade, 'q', 'qty');
-        const price = this.parseNumber (priceString);
-        const amount = this.parseNumber (amountString);
-        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const id = this.safeString2 (trade, 'a', 'id');
         let side = undefined;
         const orderId = this.safeString (trade, 'orderId');
@@ -715,7 +713,7 @@ module.exports = class currencycom extends Exchange {
         let fee = undefined;
         if ('commission' in trade) {
             fee = {
-                'cost': this.safeNumber (trade, 'commission'),
+                'cost': this.safeString (trade, 'commission'),
                 'currency': this.safeCurrencyCode (this.safeString (trade, 'commissionAsset')),
             };
         }
@@ -725,7 +723,7 @@ module.exports = class currencycom extends Exchange {
         }
         const marketId = this.safeString (trade, 'symbol');
         const symbol = this.safeSymbol (marketId, market);
-        return {
+        return this.safeTrade ({
             'info': trade,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
@@ -735,11 +733,11 @@ module.exports = class currencycom extends Exchange {
             'type': undefined,
             'takerOrMaker': takerOrMaker,
             'side': side,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': undefined,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchTrades (symbol, since = undefined, limit = undefined, params = {}) {
@@ -813,21 +811,16 @@ module.exports = class currencycom extends Exchange {
         } else if ('transactTime' in order) {
             timestamp = this.safeInteger (order, 'transactTime');
         }
-        const price = this.safeNumber (order, 'price');
-        const amount = this.safeNumber (order, 'origQty');
-        const filled = this.safeNumber (order, 'executedQty');
-        const remaining = undefined;
-        const cost = this.safeNumber (order, 'cummulativeQuoteQty');
+        const price = this.safeString (order, 'price');
+        const amount = this.safeString (order, 'origQty');
+        const filled = Precise.stringAbs (this.safeString (order, 'executedQty'));
+        const cost = this.safeString (order, 'cummulativeQuoteQty');
         const id = this.safeString (order, 'orderId');
         const type = this.safeStringLower (order, 'type');
         const side = this.safeStringLower (order, 'side');
-        let trades = undefined;
         const fills = this.safeValue (order, 'fills');
-        if (fills !== undefined) {
-            trades = this.parseTrades (fills, market);
-        }
         const timeInForce = this.safeString (order, 'timeInForce');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'timestamp': timestamp,
@@ -843,11 +836,11 @@ module.exports = class currencycom extends Exchange {
             'cost': cost,
             'average': undefined,
             'filled': filled,
-            'remaining': remaining,
+            'remaining': undefined,
             'status': status,
             'fee': undefined,
-            'trades': trades,
-        });
+            'trades': fills,
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {

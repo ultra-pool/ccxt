@@ -17,6 +17,7 @@ from ccxt.base.errors import InvalidAddress
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
 from ccxt.base.errors import CancelPending
+from ccxt.base.errors import NotSupported
 from ccxt.base.errors import NetworkError
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import ExchangeNotAvailable
@@ -40,20 +41,29 @@ class okex(Exchange):
             'pro': True,
             'certified': True,
             'has': {
+                'margin': True,
+                'swap': True,
+                'future': True,
+                'addMargin': True,
                 'cancelOrder': True,
                 'CORS': None,
                 'createOrder': True,
                 'fetchBalance': True,
+                'fetchBorrowRate': True,
+                'fetchBorrowRates': True,
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
-                'fetchDepositAddressByNetwork': True,
+                'fetchDepositAddressesByNetwork': True,
                 'fetchDeposits': True,
                 'fetchFundingHistory': True,
+                'fetchFundingRate': True,
                 'fetchFundingRateHistory': True,
                 'fetchIndexOHLCV': True,
                 'fetchLedger': True,
+                'fetchLeverage': True,
                 'fetchMarkets': True,
+                'fetchMarketsByType': True,
                 'fetchMarkOHLCV': True,
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
@@ -63,20 +73,20 @@ class okex(Exchange):
                 'fetchOrderTrades': True,
                 'fetchPosition': True,
                 'fetchPositions': True,
-                'fetchLeverage': True,
                 'fetchStatus': True,
                 'fetchTicker': True,
                 'fetchTickers': True,
+                'fetchTickersByType': True,
                 'fetchTime': True,
                 'fetchTrades': True,
+                'fetchTradingFee': True,
                 'fetchWithdrawals': True,
+                'reduceMargin': True,
+                'setLeverage': True,
+                'setMarginMode': True,
+                'setPositionMode': True,
                 'transfer': True,
                 'withdraw': True,
-                'setLeverage': True,
-                'setPositionMode': True,
-                'setMarginMode': True,
-                'addMargin': True,
-                'reduceMargin': True,
             },
             'timeframes': {
                 '1m': '1m',
@@ -1373,7 +1383,7 @@ class okex(Exchange):
             result[code] = account
         result['timestamp'] = timestamp
         result['datetime'] = self.iso8601(timestamp)
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def parse_funding_balance(self, response):
         result = {'info': response}
@@ -1388,7 +1398,65 @@ class okex(Exchange):
             account['free'] = self.safe_string(balance, 'availBal')
             account['used'] = self.safe_string(balance, 'frozenBal')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def parse_trading_fee(self, fee, market=None):
+        #
+        #     {
+        #         "category":"1",
+        #         "delivery":"",
+        #         "exercise":"",
+        #         "instType":"SPOT",
+        #         "level":"Lv1",
+        #         "maker":"-0.0008",
+        #         "taker":"-0.001",
+        #         "ts":"1639043138472"
+        #     }
+        #
+        return {
+            'info': fee,
+            'symbol': self.safe_symbol(None, market),
+            'maker': self.safe_number(fee, 'maker'),
+            'taker': self.safe_number(fee, 'taker'),
+        }
+
+    def fetch_trading_fee(self, symbol, params={}):
+        self.load_markets()
+        market = self.market(symbol)
+        request = {
+            'instType': market['type'].upper(),  # SPOT, MARGIN, SWAP, FUTURES, OPTION
+            # 'instId': market['id'],  # only applicable to SPOT/MARGIN
+            # 'uly': market['id'],  # only applicable to FUTURES/SWAP/OPTION
+            # 'category': '1',  # 1 = Class A, 2 = Class B, 3 = Class C, 4 = Class D
+        }
+        if market['spot']:
+            request['instId'] = market['id']
+        elif market['swap'] or market['futures'] or market['option']:
+            request['uly'] = market['baseId'] + '-' + market['quoteId']
+        else:
+            raise NotSupported(self.id + ' fetchTradingFee supports spot, swap, futures or option markets only')
+        response = self.privateGetAccountTradeFee(self.extend(request, params))
+        #
+        #     {
+        #         "code":"0",
+        #         "data":[
+        #             {
+        #                 "category":"1",
+        #                 "delivery":"",
+        #                 "exercise":"",
+        #                 "instType":"SPOT",
+        #                 "level":"Lv1",
+        #                 "maker":"-0.0008",
+        #                 "taker":"-0.001",
+        #                 "ts":"1639043138472"
+        #             }
+        #         ],
+        #         "msg":""
+        #     }
+        #
+        data = self.safe_value(response, 'data', [])
+        first = self.safe_value(data, 0, {})
+        return self.parse_trading_fee(first, market)
 
     def fetch_balance(self, params={}):
         self.load_markets()
@@ -2950,8 +3018,8 @@ class okex(Exchange):
         self.load_markets()
         currency = self.currency(code)
         accountsByType = self.safe_value(self.options, 'accountsByType', {})
-        fromId = self.safe_string(accountsByType, fromAccount, fromAccount)
-        toId = self.safe_string(accountsByType, toAccount, toAccount)
+        fromId = self.safe_string(accountsByType, fromAccount)
+        toId = self.safe_string(accountsByType, toAccount)
         if fromId is None:
             keys = list(accountsByType.keys())
             raise ExchangeError(self.id + ' fromAccount must be one of ' + ', '.join(keys))
@@ -3072,10 +3140,6 @@ class okex(Exchange):
         # in the response above nextFundingRate is actually two funding rates from now
         #
         nextFundingRateTimestamp = self.safe_integer(fundingRate, 'fundingTime')
-        previousFundingTimestamp = None
-        if nextFundingRateTimestamp is not None:
-            # eight hours
-            previousFundingTimestamp = nextFundingRateTimestamp - 28800000
         marketId = self.safe_string(fundingRate, 'instId')
         symbol = self.safe_symbol(marketId, market)
         nextFundingRate = self.safe_number(fundingRate, 'fundingRate')
@@ -3092,9 +3156,9 @@ class okex(Exchange):
             'datetime': None,
             'previousFundingRate': None,
             'nextFundingRate': nextFundingRate,
-            'previousFundingTimestamp': previousFundingTimestamp,  # subtract 8 hours
+            'previousFundingTimestamp': None,
             'nextFundingTimestamp': nextFundingRateTimestamp,
-            'previousFundingDatetime': self.iso8601(previousFundingTimestamp),
+            'previousFundingDatetime': None,
             'nextFundingDatetime': self.iso8601(nextFundingRateTimestamp),
         }
 
@@ -3389,11 +3453,76 @@ class okex(Exchange):
             'status': status,
         }
 
+    def fetch_borrow_rates(self, params={}):
+        self.load_markets()
+        response = self.privateGetAccountInterestRate(params)
+        # {
+        #     "code": "0",
+        #     "data": [
+        #         {
+        #             "ccy":"BTC",
+        #             "interestRate":"0.00000833"
+        #         }
+        #         ...
+        #     ],
+        # }
+        timestamp = self.milliseconds()
+        data = self.safe_value(response, 'data')
+        rates = {}
+        for i in range(0, len(data)):
+            rate = data[i]
+            code = self.safe_currency_code(self.safe_string(rate, 'ccy'))
+            rates[code] = {
+                'currency': code,
+                'rate': self.safe_number(rate, 'interestRate'),
+                'period': 86400000,
+                'timestamp': timestamp,
+                'datetime': self.iso8601(timestamp),
+                'info': rate,
+            }
+        return rates
+
+    def fetch_borrow_rate(self, code, params={}):
+        self.load_markets()
+        currency = self.currency(code)
+        request = {
+            'ccy': currency['id'],
+        }
+        response = self.privateGetAccountInterestRate(self.extend(request, params))
+        # {
+        #     "code": "0",
+        #     "data":[
+        #          {
+        #             "ccy":"USDT",
+        #             "interestRate":"0.00002065"
+        #          }
+        #          ...
+        #     ],
+        #     "msg":""
+        # }
+        timestamp = self.milliseconds()
+        data = self.safe_value(response, 'data')
+        rate = self.safe_value(data, 0)
+        return {
+            'currency': code,
+            'rate': self.safe_number(rate, 'interestRate'),
+            'period': 86400000,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
+            'info': rate,
+        }
+
     def reduce_margin(self, symbol, amount, params={}):
         return self.modify_margin_helper(symbol, amount, 'reduce', params)
 
     def add_margin(self, symbol, amount, params={}):
         return self.modify_margin_helper(symbol, amount, 'add', params)
+
+    def set_sandbox_mode(self, enable):
+        if enable:
+            self.headers['x-simulated-trading'] = 1
+        else:
+            self.headers['x-simulated-trading'] = None
 
     def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if not response:

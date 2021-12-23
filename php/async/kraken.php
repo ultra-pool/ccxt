@@ -16,6 +16,7 @@ use \ccxt\CancelPending;
 use \ccxt\RateLimitExceeded;
 use \ccxt\ExchangeNotAvailable;
 use \ccxt\InvalidNonce;
+use \ccxt\Precise;
 
 class kraken extends Exchange {
 
@@ -29,17 +30,20 @@ class kraken extends Exchange {
             'certified' => false,
             'pro' => true,
             'has' => array(
+                'margin' => true,
                 'cancelAllOrders' => true,
                 'cancelOrder' => true,
                 'CORS' => null,
                 'createDepositAddress' => true,
                 'createOrder' => true,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRateHistory' => false,
+                'fetchBorrowRates' => false,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
                 'fetchDeposits' => true,
-                'fetchPremiumIndexOHLCV' => false,
                 'fetchLedger' => true,
                 'fetchLedgerEntry' => true,
                 'fetchMarkets' => true,
@@ -49,11 +53,12 @@ class kraken extends Exchange {
                 'fetchOrder' => true,
                 'fetchOrderBook' => true,
                 'fetchOrderTrades' => 'emulated',
+                'fetchPositions' => true,
+                'fetchPremiumIndexOHLCV' => false,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTime' => true,
                 'fetchTrades' => true,
-                'fetchTradingFee' => true,
                 'fetchTradingFees' => true,
                 'fetchWithdrawals' => true,
                 'setMarginMode' => false, // Kraken only supports cross margin
@@ -352,6 +357,7 @@ class kraken extends Exchange {
                 'EAPI:Invalid nonce' => '\\ccxt\\InvalidNonce',
                 'EFunding:No funding method' => '\\ccxt\\BadRequest', // array("error":"EFunding:No funding method")
                 'EFunding:Unknown asset' => '\\ccxt\\BadSymbol', // array("error":["EFunding:Unknown asset"])
+                'EService:Market in post_only mode' => '\\ccxt\\OnMaintenance', // array(is_array(post_only mode"]) && array_key_exists("error":["EService:Market, post_only mode"]))
             ),
         ));
     }
@@ -467,14 +473,14 @@ class kraken extends Exchange {
                 'limits' => array(
                     'amount' => array(
                         'min' => $minAmount,
-                        'max' => pow(10, $precision['amount']),
+                        'max' => null,
                     ),
                     'price' => array(
                         'min' => pow(10, -$precision['price']),
                         'max' => null,
                     ),
                     'cost' => array(
-                        'min' => 0,
+                        'min' => null,
                         'max' => null,
                     ),
                     'leverage' => array(
@@ -1099,7 +1105,7 @@ class kraken extends Exchange {
             $account['total'] = $this->safe_string($balances, $currencyId);
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1245,10 +1251,10 @@ class kraken extends Exchange {
         if ($orderDescription !== null) {
             $parts = explode(' ', $orderDescription);
             $side = $this->safe_string($parts, 0);
-            $amount = $this->safe_number($parts, 1);
+            $amount = $this->safe_string($parts, 1);
             $marketId = $this->safe_string($parts, 2);
             $type = $this->safe_string($parts, 4);
-            $price = $this->safe_number($parts, 5);
+            $price = $this->safe_string($parts, 5);
         }
         $side = $this->safe_string($description, 'type', $side);
         $type = $this->safe_string($description, 'ordertype', $type);
@@ -1262,23 +1268,24 @@ class kraken extends Exchange {
             $market = $this->get_delisted_market_by_id($marketId);
         }
         $timestamp = $this->safe_timestamp($order, 'opentm');
-        $amount = $this->safe_number($order, 'vol', $amount);
-        $filled = $this->safe_number($order, 'vol_exec');
+        $amount = $this->safe_string($order, 'vol', $amount);
+        $filled = $this->safe_string($order, 'vol_exec');
         $fee = null;
-        $cost = $this->safe_number($order, 'cost');
-        $price = $this->safe_number($description, 'price', $price);
-        if (($price === null) || ($price === 0.0)) {
-            $price = $this->safe_number($description, 'price2');
+        // kraken truncates the $cost in the api response so we will ignore it and calculate it from $average & $filled
+        // $cost = $this->safe_string($order, 'cost');
+        $price = $this->safe_string($description, 'price', $price);
+        if (($price === null) || Precise::string_equals($price, '0')) {
+            $price = $this->safe_string($description, 'price2');
         }
-        if (($price === null) || ($price === 0.0)) {
-            $price = $this->safe_number($order, 'price', $price);
+        if (($price === null) || Precise::string_equals($price, '0')) {
+            $price = $this->safe_string($order, 'price', $price);
         }
         $average = $this->safe_number($order, 'price');
         if ($market !== null) {
             $symbol = $market['symbol'];
             if (is_array($order) && array_key_exists('fee', $order)) {
                 $flags = $order['oflags'];
-                $feeCost = $this->safe_number($order, 'fee');
+                $feeCost = $this->safe_string($order, 'fee');
                 $fee = array(
                     'cost' => $feeCost,
                     'rate' => null,
@@ -1298,12 +1305,8 @@ class kraken extends Exchange {
         }
         $clientOrderId = $this->safe_string($order, 'userref');
         $rawTrades = $this->safe_value($order, 'trades');
-        $trades = null;
-        if ($rawTrades !== null) {
-            $trades = $this->parse_trades($rawTrades, $market, null, null, array( 'order' => $id ));
-        }
         $stopPrice = $this->safe_number($order, 'stopprice');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
             'info' => $order,
@@ -1318,14 +1321,14 @@ class kraken extends Exchange {
             'side' => $side,
             'price' => $price,
             'stopPrice' => $stopPrice,
-            'cost' => $cost,
+            'cost' => null,
             'amount' => $amount,
             'filled' => $filled,
             'average' => $average,
             'remaining' => null,
             'fee' => $fee,
-            'trades' => $trades,
-        ));
+            'trades' => $rawTrades,
+        ), $market);
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {

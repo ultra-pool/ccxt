@@ -62,13 +62,11 @@ class idex(Exchange):
             },
             'urls': {
                 'test': {
-                    'public': 'https://api-sandbox.idex.io',
-                    'private': 'https://api-sandbox.idex.io',
+                    'MATIC': 'https://api-sandbox-matic.idex.io',
                 },
                 'logo': 'https://user-images.githubusercontent.com/51840849/94481303-2f222100-01e0-11eb-97dd-bc14c5943a86.jpg',
                 'api': {
-                    'ETH': 'https://api-eth.idex.io',
-                    'BSC': 'https://api-bsc.idex.io',
+                    'MATIC': 'https://api-matic.idex.io',
                 },
                 'www': 'https://idex.io',
                 'doc': [
@@ -114,7 +112,7 @@ class idex(Exchange):
             'options': {
                 'defaultTimeInForce': 'gtc',
                 'defaultSelfTradePrevention': 'cn',
-                'network': 'ETH',  # also supports BSC
+                'network': 'MATIC',
             },
             'exceptions': {
                 'INVALID_ORDER_QUANTITY': InvalidOrder,
@@ -193,25 +191,42 @@ class idex(Exchange):
             minCost = None
             if quote == 'ETH':
                 minCost = minCostETH
-            precision = {
-                'amount': int(basePrecisionString),
-                'price': int(quotePrecisionString),
-            }
             result.append({
-                'symbol': symbol,
                 'id': marketId,
+                'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': None,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': None,
                 'type': 'spot',
                 'spot': True,
-                'active': active,
-                'info': entry,
-                'precision': precision,
+                'margin': False,
+                'swap': False,
+                'futures': False,
+                'option': False,
+                'derivative': False,
+                'contract': False,
+                'linear': None,
+                'inverse': None,
                 'taker': taker,
                 'maker': maker,
+                'contractSize': None,
+                'active': active,
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'amount': int(basePrecisionString),
+                    'price': int(quotePrecisionString),
+                },
                 'limits': {
+                    'leverage': {
+                        'min': None,
+                        'max': None,
+                    },
                     'amount': {
                         'min': self.parse_number(basePrecision),
                         'max': None,
@@ -225,6 +240,7 @@ class idex(Exchange):
                         'max': None,
                     },
                 },
+                'info': entry,
             })
         return result
 
@@ -610,7 +626,7 @@ class idex(Exchange):
             account['free'] = self.safe_string(entry, 'availableForTrade')
             account['used'] = self.safe_string(entry, 'locked')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         self.check_required_credentials()

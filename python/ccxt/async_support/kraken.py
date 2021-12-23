@@ -27,9 +27,11 @@ from ccxt.base.errors import CancelPending
 from ccxt.base.errors import DDoSProtection
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import ExchangeNotAvailable
+from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import InvalidNonce
 from ccxt.base.decimal_to_precision import TRUNCATE
 from ccxt.base.decimal_to_precision import DECIMAL_PLACES
+from ccxt.base.precise import Precise
 
 
 class kraken(Exchange):
@@ -44,17 +46,20 @@ class kraken(Exchange):
             'certified': False,
             'pro': True,
             'has': {
+                'margin': True,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'CORS': None,
                 'createDepositAddress': True,
                 'createOrder': True,
                 'fetchBalance': True,
+                'fetchBorrowRate': False,
+                'fetchBorrowRateHistory': False,
+                'fetchBorrowRates': False,
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
                 'fetchDeposits': True,
-                'fetchPremiumIndexOHLCV': False,
                 'fetchLedger': True,
                 'fetchLedgerEntry': True,
                 'fetchMarkets': True,
@@ -64,11 +69,12 @@ class kraken(Exchange):
                 'fetchOrder': True,
                 'fetchOrderBook': True,
                 'fetchOrderTrades': 'emulated',
+                'fetchPositions': True,
+                'fetchPremiumIndexOHLCV': False,
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTime': True,
                 'fetchTrades': True,
-                'fetchTradingFee': True,
                 'fetchTradingFees': True,
                 'fetchWithdrawals': True,
                 'setMarginMode': False,  # Kraken only supports cross margin
@@ -367,6 +373,7 @@ class kraken(Exchange):
                 'EAPI:Invalid nonce': InvalidNonce,
                 'EFunding:No funding method': BadRequest,  # {"error":"EFunding:No funding method"}
                 'EFunding:Unknown asset': BadSymbol,  # {"error":["EFunding:Unknown asset"]}
+                'EService:Market in post_only mode': OnMaintenance,  # {"error":["EService:Market in post_only mode"]}
             },
         })
 
@@ -477,14 +484,14 @@ class kraken(Exchange):
                 'limits': {
                     'amount': {
                         'min': minAmount,
-                        'max': math.pow(10, precision['amount']),
+                        'max': None,
                     },
                     'price': {
                         'min': math.pow(10, -precision['price']),
                         'max': None,
                     },
                     'cost': {
-                        'min': 0,
+                        'min': None,
                         'max': None,
                     },
                     'leverage': {
@@ -1052,7 +1059,7 @@ class kraken(Exchange):
             account = self.account()
             account['total'] = self.safe_string(balances, currencyId)
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -1184,10 +1191,10 @@ class kraken(Exchange):
         if orderDescription is not None:
             parts = orderDescription.split(' ')
             side = self.safe_string(parts, 0)
-            amount = self.safe_number(parts, 1)
+            amount = self.safe_string(parts, 1)
             marketId = self.safe_string(parts, 2)
             type = self.safe_string(parts, 4)
-            price = self.safe_number(parts, 5)
+            price = self.safe_string(parts, 5)
         side = self.safe_string(description, 'type', side)
         type = self.safe_string(description, 'ordertype', type)
         marketId = self.safe_string(description, 'pair', marketId)
@@ -1199,21 +1206,22 @@ class kraken(Exchange):
             # delisted market ids go here
             market = self.get_delisted_market_by_id(marketId)
         timestamp = self.safe_timestamp(order, 'opentm')
-        amount = self.safe_number(order, 'vol', amount)
-        filled = self.safe_number(order, 'vol_exec')
+        amount = self.safe_string(order, 'vol', amount)
+        filled = self.safe_string(order, 'vol_exec')
         fee = None
-        cost = self.safe_number(order, 'cost')
-        price = self.safe_number(description, 'price', price)
-        if (price is None) or (price == 0.0):
-            price = self.safe_number(description, 'price2')
-        if (price is None) or (price == 0.0):
-            price = self.safe_number(order, 'price', price)
+        # kraken truncates the cost in the api response so we will ignore it and calculate it from average & filled
+        # cost = self.safe_string(order, 'cost')
+        price = self.safe_string(description, 'price', price)
+        if (price is None) or Precise.string_equals(price, '0'):
+            price = self.safe_string(description, 'price2')
+        if (price is None) or Precise.string_equals(price, '0'):
+            price = self.safe_string(order, 'price', price)
         average = self.safe_number(order, 'price')
         if market is not None:
             symbol = market['symbol']
             if 'fee' in order:
                 flags = order['oflags']
-                feeCost = self.safe_number(order, 'fee')
+                feeCost = self.safe_string(order, 'fee')
                 fee = {
                     'cost': feeCost,
                     'rate': None,
@@ -1229,11 +1237,8 @@ class kraken(Exchange):
             id = self.safe_string(txid, 0)
         clientOrderId = self.safe_string(order, 'userref')
         rawTrades = self.safe_value(order, 'trades')
-        trades = None
-        if rawTrades is not None:
-            trades = self.parse_trades(rawTrades, market, None, None, {'order': id})
         stopPrice = self.safe_number(order, 'stopprice')
-        return self.safe_order({
+        return self.safe_order2({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -1248,14 +1253,14 @@ class kraken(Exchange):
             'side': side,
             'price': price,
             'stopPrice': stopPrice,
-            'cost': cost,
+            'cost': None,
             'amount': amount,
             'filled': filled,
             'average': average,
             'remaining': None,
             'fee': fee,
-            'trades': trades,
-        })
+            'trades': rawTrades,
+        }, market)
 
     async def fetch_order(self, id, symbol=None, params={}):
         await self.load_markets()

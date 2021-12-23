@@ -40,7 +40,6 @@ class bitrue extends Exchange {
                 'fetchFundingRateHistory' => false,
                 'fetchFundingRates' => false,
                 'fetchIndexOHLCV' => false,
-                'fetchIsolatedPositions' => false,
                 'fetchMarkets' => true,
                 'fetchMarkOHLCV' => false,
                 'fetchMyTrades' => true,
@@ -51,7 +50,7 @@ class bitrue extends Exchange {
                 'fetchOrders' => false,
                 'fetchPositions' => false,
                 'fetchPremiumIndexOHLCV' => false,
-                'fetchStatus' => false,
+                'fetchStatus' => true,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTime' => true,
@@ -330,6 +329,18 @@ class bitrue extends Exchange {
 
     public function nonce() {
         return $this->milliseconds() - $this->options['timeDifference'];
+    }
+
+    public function fetch_status($params = array ()) {
+        $response = yield $this->v1PublicGetPing ($params);
+        $keys = is_array($response) ? array_keys($response) : array();
+        $keysLength = is_array($keys) ? count($keys) : 0;
+        $formattedStatus = $keysLength ? 'maintenance' : 'ok';
+        $this->status = array_merge($this->status, array(
+            'status' => $formattedStatus,
+            'updated' => $this->milliseconds(),
+        ));
+        return $this->status;
     }
 
     public function fetch_time($params = array ()) {
@@ -677,7 +688,7 @@ class bitrue extends Exchange {
         }
         $result['timestamp'] = $timestamp;
         $result['datetime'] = $this->iso8601($timestamp);
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {

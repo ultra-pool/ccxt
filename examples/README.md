@@ -99,7 +99,11 @@ php -f path/to/example.php # substitute for actual filename here
 
 [Let’s write a cryptocurrency bot](https://medium.com/@joeldg/an-advanced-tutorial-a-new-crypto-currency-trading-bot-boilerplate-framework-e777733607ae) – A multi-part advanced tutorial on a new cryptocurrency trading framework also integrating ccxt.
 
+[Naas.ai CCXT Templates](https://www.naas.ai/tools/ccxt) – Naas notebooks enable you to easily access data, automation and AI.
+
 [Download Cryptocurrency Data with CCXT](https://backtest-rookies.com/2018/03/08/download-cryptocurrency-data-with-ccxt/) – A sample script to download historical data from exchanges with a video overview: [Easy Python script to download crypto currency market data with CCXT package](https://www.youtube.com/watch?v=PTGkJsrF7kQ).
+
+[How to Properly Download and Validate Cryptocurrency Data](https://medium.com/@dmitriy.kavyazin/how-to-properly-download-and-validate-cryptocurrency-data-fa90ac1c5f8b) – An article explaining how to properly obtain cryptocurrency price and volume data for use in trading and statistical modeling (with CCXT).
 
 [ccxt 를 사용하여 가상화폐 데이터 다운로드하기](https://antilibrary.org/2174) – A Korean translation of the above article.
 
@@ -145,6 +149,8 @@ php -f path/to/example.php # substitute for actual filename here
 [TensorTrade: Trade Efficiently with Reinforcement Learning](https://github.com/tensortrade-org/tensortrade) – TensorTrade is an open source Python framework for building, training, evaluating, and deploying robust trading algorithms using reinforcement learning.
 
 [Never Pay Fees Again: Mimic Market Buys with Limit Chase Orders in Python](https://nukewhales.com/p/limitchase.html) – A tutorial on how to automate your maker fees.
+
+[Step-By-Step Guide to Installing Python and CCXT Library](https://www.youtube.com/watch?v=bmKAtBfGk50) – A step-by-step video guide to installing Python and CCXT library which are used by many tools and bots running on MT4 and MT5 platforms on Windows.
 
 [비트코인 해외 거래소 API - 바이낸스 CCXT설치](https://www.youtube.com/watch?v=7dMGbjwZwlU) – Using CCXT to trade with Binance API, a video overview of CCXT in Korean.
 

@@ -53,7 +53,6 @@ class bitrue(Exchange):
                 'fetchFundingRateHistory': False,
                 'fetchFundingRates': False,
                 'fetchIndexOHLCV': False,
-                'fetchIsolatedPositions': False,
                 'fetchMarkets': True,
                 'fetchMarkOHLCV': False,
                 'fetchMyTrades': True,
@@ -64,7 +63,7 @@ class bitrue(Exchange):
                 'fetchOrders': False,
                 'fetchPositions': False,
                 'fetchPremiumIndexOHLCV': False,
-                'fetchStatus': False,
+                'fetchStatus': True,
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTime': True,
@@ -339,6 +338,17 @@ class bitrue(Exchange):
 
     def nonce(self):
         return self.milliseconds() - self.options['timeDifference']
+
+    def fetch_status(self, params={}):
+        response = self.v1PublicGetPing(params)
+        keys = list(response.keys())
+        keysLength = len(keys)
+        formattedStatus = 'maintenance' if keysLength else 'ok'
+        self.status = self.extend(self.status, {
+            'status': formattedStatus,
+            'updated': self.milliseconds(),
+        })
+        return self.status
 
     def fetch_time(self, params={}):
         response = self.v1PublicGetTime(params)
@@ -673,7 +683,7 @@ class bitrue(Exchange):
             result[code] = account
         result['timestamp'] = timestamp
         result['datetime'] = self.iso8601(timestamp)
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()

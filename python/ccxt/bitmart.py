@@ -260,7 +260,9 @@ class bitmart(Exchange):
                     '50022': ExchangeNotAvailable,  # 400, Service unavailable
                     '50023': BadSymbol,  # 400, This Symbol can't place order by api
                     '50029': InvalidOrder,  # {"message":"param not match : size * price >=1000","code":50029,"trace":"f931f030-b692-401b-a0c5-65edbeadc598","data":{}}
+                    '50030': InvalidOrder,  # {"message":"Order is already canceled","code":50030,"trace":"8d6f64ee-ad26-45a4-9efd-1080f9fca1fa","data":{}}
                     '53000': AccountSuspended,  # 403, Your account is frozen due to security policies. Please contact customer service
+                    '53001': AccountSuspended,  # {"message":"Your kyc country is restricted. Please contact customer service.","code":53001,"trace":"8b445940-c123-4de9-86d7-73c5be2e7a24","data":{}}
                     '57001': BadRequest,  # 405, Method Not Allowed
                     '58001': BadRequest,  # 415, Unsupported Media Type
                     '59001': ExchangeError,  # 500, User account not found
@@ -306,6 +308,8 @@ class bitmart(Exchange):
             'commonCurrencies': {
                 'COT': 'Community Coin',
                 'CPC': 'CPCoin',
+                'DMS': 'DimSum',  # conflict with Dragon Mainland Shards
+                'FOX': 'Fox Finance',
                 'GDT': 'Gorilla Diamond',
                 '$HERO': 'Step Hero',
                 '$PAC': 'PAC',
@@ -314,6 +318,7 @@ class bitmart(Exchange):
                 'ONE': 'Menlo One',
                 'PLA': 'Plair',
                 'TCT': 'TacoCat Token',
+                'TRU': 'Truebit',  # conflict with TrueFi
             },
             'options': {
                 'networks': {
@@ -451,7 +456,7 @@ class bitmart(Exchange):
             pricePrecision = self.safe_integer(market, 'price_max_precision')
             precision = {
                 'amount': self.safe_number(market, 'base_min_size'),
-                'price': self.parse_number(self.decimal_to_precision(math.pow(10, -pricePrecision), ROUND, 12)),
+                'price': self.parse_number(self.decimal_to_precision(math.pow(10, -pricePrecision), ROUND, 14)),
             }
             minBuyCost = self.safe_number(market, 'min_buy_amount')
             minSellCost = self.safe_number(market, 'min_sell_amount')
@@ -697,8 +702,8 @@ class bitmart(Exchange):
             percentage *= 100
         if percentage is None:
             percentage = self.safe_number(ticker, 'price_change_percent_24h')
-        baseVolume = self.safe_number_2(ticker, 'base_volume_24h', 'base_coin_volume')
-        quoteVolume = self.safe_number_2(ticker, 'quote_volume_24h', 'quote_coin_volume')
+        baseVolume = self.safe_number_2(ticker, 'base_coin_volume', 'base_volume_24h')
+        quoteVolume = self.safe_number_2(ticker, 'quote_coin_volume', 'quote_volume_24h')
         quoteVolume = self.safe_number(ticker, 'volume_24h', quoteVolume)
         open = self.safe_number_2(ticker, 'open_24h', 'open')
         average = None
@@ -1454,7 +1459,7 @@ class bitmart(Exchange):
             account['free'] = self.safe_string_2(balance, 'available', 'available_vol')
             account['used'] = self.safe_string_2(balance, 'frozen', 'freeze_vol')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def parse_order(self, order, market=None):
         #
@@ -1798,6 +1803,8 @@ class bitmart(Exchange):
                 request['status'] = 9
             elif status == 'closed':
                 request['status'] = 6
+            elif status == 'canceled':
+                request['status'] = 8
             else:
                 request['status'] = status
         elif market['swap'] or market['future']:
@@ -1885,6 +1892,9 @@ class bitmart(Exchange):
 
     def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
         return self.fetch_orders_by_status('closed', symbol, since, limit, params)
+
+    def fetch_canceled_orders(self, symbol=None, since=None, limit=None, params={}):
+        return self.fetch_orders_by_status('canceled', symbol, since, limit, params)
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:

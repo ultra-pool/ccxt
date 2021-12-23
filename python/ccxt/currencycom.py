@@ -160,6 +160,7 @@ class currencycom(Exchange):
                 'CAR': 'Avis Budget Group Inc',
                 'EDU': 'New Oriental Education & Technology Group Inc',
                 'ETN': 'Eaton',
+                'FOX': 'Fox Corporation',
                 'IQ': 'iQIYI',
                 'PLAY': "Dave & Buster's Entertainment",
             },
@@ -425,7 +426,7 @@ class currencycom(Exchange):
             account['free'] = self.safe_string(balance, 'free')
             account['used'] = self.safe_string(balance, 'locked')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def fetch_balance(self, params={}):
         self.load_markets()
@@ -676,9 +677,6 @@ class currencycom(Exchange):
         timestamp = self.safe_integer_2(trade, 'T', 'time')
         priceString = self.safe_string_2(trade, 'p', 'price')
         amountString = self.safe_string_2(trade, 'q', 'qty')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         id = self.safe_string_2(trade, 'a', 'id')
         side = None
         orderId = self.safe_string(trade, 'orderId')
@@ -692,7 +690,7 @@ class currencycom(Exchange):
         fee = None
         if 'commission' in trade:
             fee = {
-                'cost': self.safe_number(trade, 'commission'),
+                'cost': self.safe_string(trade, 'commission'),
                 'currency': self.safe_currency_code(self.safe_string(trade, 'commissionAsset')),
             }
         takerOrMaker = None
@@ -700,7 +698,7 @@ class currencycom(Exchange):
             takerOrMaker = 'maker' if trade['isMaker'] else 'taker'
         marketId = self.safe_string(trade, 'symbol')
         symbol = self.safe_symbol(marketId, market)
-        return {
+        return self.safe_trade({
             'info': trade,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -710,11 +708,11 @@ class currencycom(Exchange):
             'type': None,
             'takerOrMaker': takerOrMaker,
             'side': side,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': fee,
-        }
+        }, market)
 
     def fetch_trades(self, symbol, since=None, limit=None, params={}):
         self.load_markets()
@@ -783,20 +781,16 @@ class currencycom(Exchange):
             timestamp = self.safe_integer(order, 'time')
         elif 'transactTime' in order:
             timestamp = self.safe_integer(order, 'transactTime')
-        price = self.safe_number(order, 'price')
-        amount = self.safe_number(order, 'origQty')
-        filled = self.safe_number(order, 'executedQty')
-        remaining = None
-        cost = self.safe_number(order, 'cummulativeQuoteQty')
+        price = self.safe_string(order, 'price')
+        amount = self.safe_string(order, 'origQty')
+        filled = Precise.string_abs(self.safe_string(order, 'executedQty'))
+        cost = self.safe_string(order, 'cummulativeQuoteQty')
         id = self.safe_string(order, 'orderId')
         type = self.safe_string_lower(order, 'type')
         side = self.safe_string_lower(order, 'side')
-        trades = None
         fills = self.safe_value(order, 'fills')
-        if fills is not None:
-            trades = self.parse_trades(fills, market)
         timeInForce = self.safe_string(order, 'timeInForce')
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': id,
             'timestamp': timestamp,
@@ -812,11 +806,11 @@ class currencycom(Exchange):
             'cost': cost,
             'average': None,
             'filled': filled,
-            'remaining': remaining,
+            'remaining': None,
             'status': status,
             'fee': None,
-            'trades': trades,
-        })
+            'trades': fills,
+        }, market)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()

@@ -2,7 +2,7 @@
 Manual
 ======
 
-The CCXT Pro stack is built upon `CCXT <https://ccxt.trade>`__ and extends the core CCXT classes, using:
+The CCXT Pro stack is built upon `CCXT <https://ccxt.com>`__ and extends the core CCXT classes, using:
 
 
  * JavaScript prototype-level mixins
@@ -52,9 +52,9 @@ The CCXT Pro heavily relies on the transpiler of CCXT for `multilanguage support
        +=============================================================+
 
 Exchanges
-=========
+---------
 
-The CCXT Pro library currently supports the following 35 cryptocurrency exchange markets and WebSocket trading APIs:
+The CCXT Pro library currently supports the following 36 cryptocurrency exchange markets and WebSocket trading APIs:
 
 .. list-table::
    :header-rows: 1
@@ -629,6 +629,21 @@ The CCXT Pro library currently supports the following 35 cryptocurrency exchange
           :target: https://ccxt.pro
           :alt: CCXT Pro
      
+   * - .. image:: https://user-images.githubusercontent.com/1294454/146103275-c39a34d9-68a4-4cd2-b1f1-c684548d311b.jpg
+          :target: https://trade.zipmex.com/global/accounts/sign-up?aff=KLm7HyCsvN
+          :alt: zipmex
+     
+     - zipmex
+     - `Zipmex <https://trade.zipmex.com/global/accounts/sign-up?aff=KLm7HyCsvN>`__
+     - .. image:: https://img.shields.io/badge/*-lightgray
+          :target: https://apidoc.ndax.io/
+          :alt: API Version *
+     
+     - 
+     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
+          :target: https://ccxt.pro
+          :alt: CCXT Pro
+     
 
 
 This is the list of exchanges in CCXT Pro with support for WebSockets APIs. This list will be updated with new exchanges on a regular basis.
@@ -636,7 +651,7 @@ This is the list of exchanges in CCXT Pro with support for WebSockets APIs. This
 Full list of exchanges available in CCXT via REST: `Supported Cryptocurrency Exchange Markets <https://github.com/ccxt/ccxt/#supported-cryptocurrency-exchange-markets>`__.
 
 Usage
-=====
+-----
 
 .. code-block:: diff
 
@@ -901,7 +916,7 @@ The result from the newUpdates mode will be one or more updates that have occurr
 .. code-block:: JavaScript
 
    [
-       order, // see https://github.com/ccxt/ccxt/wiki/Manual#order-structure
+       order, // see https://docs.ccxt.com/en/latest/manual.html#order-structure
        order,
        order,
        ...
@@ -1088,12 +1103,12 @@ Market Data
 watchOrderBook
 """"""""""""""
 
-The ``watchOrderBook``\ 's interface is identical to `fetchOrderBook <https://github.com/ccxt/ccxt/wiki/Manual#order-book>`__. It accepts three arguments:
+The ``watchOrderBook``\ 's interface is identical to `fetchOrderBook <https://docs.ccxt.com/en/latest/manual.html#order-book>`__. It accepts three arguments:
 
 
  * ``symbol`` – string, a unified CCXT symbol, required
  * ``limit`` – integer, the max number of bids/asks returned, optional
- * ``params`` – assoc dictionary, optional overrides as described in `Overriding Unified API Params <https://github.com/ccxt/ccxt/wiki/Manual#overriding-unified-api-params>`__
+ * ``params`` – assoc dictionary, optional overrides as described in `Overriding Unified API Params <https://docs.ccxt.com/en/latest/manual.html#overriding-unified-api-params>`__
 
 In general, the exchanges can be divided in two categories:
 
@@ -1379,7 +1394,7 @@ Private Methods
 Authentication
 ~~~~~~~~~~~~~~
 
-In most cases the authentication logic is borrowed from CCXT since the exchanges use the same keypairs and signing algorithms for REST APIs and WebSocket APIs. See `API Keys Setup <https://github.com/ccxt/ccxt/wiki/Manual#api-keys-setup>`__ for more details.
+In most cases the authentication logic is borrowed from CCXT since the exchanges use the same keypairs and signing algorithms for REST APIs and WebSocket APIs. See `API Keys Setup <https://docs.ccxt.com/en/latest/manual.html#api-keys-setup>`__ for more details.
 
 Trading
 ~~~~~~~
@@ -1486,6 +1501,6 @@ watchTransactions
    - this method is a work in progress now (may be unavailable)
 
 Error Handling
---------------
+^^^^^^^^^^^^^^
 
-In case of an error the CCXT Pro will throw a standard CCXT exception, see `Error Handling <https://github.com/ccxt/ccxt/wiki/Manual#error-handling>`__ for more details.
+In case of an error the CCXT Pro will throw a standard CCXT exception, see `Error Handling <https://docs.ccxt.com/en/latest/manual.html#error-handling>`__ for more details.

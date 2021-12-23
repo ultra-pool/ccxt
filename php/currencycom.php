@@ -152,6 +152,7 @@ class currencycom extends Exchange {
                 'CAR' => 'Avis Budget Group Inc',
                 'EDU' => 'New Oriental Education & Technology Group Inc',
                 'ETN' => 'Eaton',
+                'FOX' => 'Fox Corporation',
                 'IQ' => 'iQIYI',
                 'PLAY' => "Dave & Buster's Entertainment",
             ),
@@ -437,7 +438,7 @@ class currencycom extends Exchange {
             $account['used'] = $this->safe_string($balance, 'locked');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function fetch_balance($params = array ()) {
@@ -700,9 +701,6 @@ class currencycom extends Exchange {
         $timestamp = $this->safe_integer_2($trade, 'T', 'time');
         $priceString = $this->safe_string_2($trade, 'p', 'price');
         $amountString = $this->safe_string_2($trade, 'q', 'qty');
-        $price = $this->parse_number($priceString);
-        $amount = $this->parse_number($amountString);
-        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $id = $this->safe_string_2($trade, 'a', 'id');
         $side = null;
         $orderId = $this->safe_string($trade, 'orderId');
@@ -718,7 +716,7 @@ class currencycom extends Exchange {
         $fee = null;
         if (is_array($trade) && array_key_exists('commission', $trade)) {
             $fee = array(
-                'cost' => $this->safe_number($trade, 'commission'),
+                'cost' => $this->safe_string($trade, 'commission'),
                 'currency' => $this->safe_currency_code($this->safe_string($trade, 'commissionAsset')),
             );
         }
@@ -728,7 +726,7 @@ class currencycom extends Exchange {
         }
         $marketId = $this->safe_string($trade, 'symbol');
         $symbol = $this->safe_symbol($marketId, $market);
-        return array(
+        return $this->safe_trade(array(
             'info' => $trade,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
@@ -738,11 +736,11 @@ class currencycom extends Exchange {
             'type' => null,
             'takerOrMaker' => $takerOrMaker,
             'side' => $side,
-            'price' => $price,
-            'amount' => $amount,
-            'cost' => $cost,
+            'price' => $priceString,
+            'amount' => $amountString,
+            'cost' => null,
             'fee' => $fee,
-        );
+        ), $market);
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
@@ -816,21 +814,16 @@ class currencycom extends Exchange {
         } else if (is_array($order) && array_key_exists('transactTime', $order)) {
             $timestamp = $this->safe_integer($order, 'transactTime');
         }
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'origQty');
-        $filled = $this->safe_number($order, 'executedQty');
-        $remaining = null;
-        $cost = $this->safe_number($order, 'cummulativeQuoteQty');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'origQty');
+        $filled = Precise::string_abs($this->safe_string($order, 'executedQty'));
+        $cost = $this->safe_string($order, 'cummulativeQuoteQty');
         $id = $this->safe_string($order, 'orderId');
         $type = $this->safe_string_lower($order, 'type');
         $side = $this->safe_string_lower($order, 'side');
-        $trades = null;
         $fills = $this->safe_value($order, 'fills');
-        if ($fills !== null) {
-            $trades = $this->parse_trades($fills, $market);
-        }
         $timeInForce = $this->safe_string($order, 'timeInForce');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'timestamp' => $timestamp,
@@ -846,11 +839,11 @@ class currencycom extends Exchange {
             'cost' => $cost,
             'average' => null,
             'filled' => $filled,
-            'remaining' => $remaining,
+            'remaining' => null,
             'status' => $status,
             'fee' => null,
-            'trades' => $trades,
-        ));
+            'trades' => $fills,
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {

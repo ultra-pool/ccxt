@@ -165,6 +165,7 @@ class yobit(Exchange):
                 'MASK': 'Yobit MASK',
                 'MDT': 'Midnight',
                 'MIS': 'MIScoin',
+                'MM': 'MasterMint',  # conflict with MilliMeter
                 'NAV': 'NavajoCoin',
                 'NBT': 'NiceBytes',
                 'OMG': 'OMGame',
@@ -191,6 +192,7 @@ class yobit(Exchange):
                 'UST': 'Uservice',
                 'VOL': 'VolumeCoin',
                 'XIN': 'XINCoin',
+                'XMT': 'SummitCoin',
                 'XRA': 'Ratecoin',
             },
             'options': {
@@ -278,7 +280,7 @@ class yobit(Exchange):
             account['free'] = self.safe_string(free, currencyId)
             account['total'] = self.safe_string(total, currencyId)
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def fetch_markets(self, params={}):
         response = self.publicGetInfo(params)

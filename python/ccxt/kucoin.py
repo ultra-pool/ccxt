@@ -38,6 +38,8 @@ class kucoin(Exchange):
             'comment': 'Platform 2.0',
             'quoteJsonNumbers': False,
             'has': {
+                'swap': False,
+                'future': False,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'CORS': None,
@@ -45,6 +47,8 @@ class kucoin(Exchange):
                 'createOrder': True,
                 'fetchAccounts': True,
                 'fetchBalance': True,
+                'fetchBorrowRate': False,
+                'fetchBorrowRates': False,
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
@@ -53,6 +57,7 @@ class kucoin(Exchange):
                 'fetchFundingHistory': True,
                 'fetchFundingRateHistory': False,
                 'fetchIndexOHLCV': False,
+                'fetchL3OrderBook': True,
                 'fetchLedger': True,
                 'fetchMarkets': True,
                 'fetchMarkOHLCV': False,
@@ -61,6 +66,7 @@ class kucoin(Exchange):
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
+                'fetchOrdersByStatus': True,
                 'fetchPremiumIndexOHLCV': False,
                 'fetchStatus': True,
                 'fetchTicker': True,
@@ -313,10 +319,42 @@ class kucoin(Exchange):
             },
             'fees': {
                 'trading': {
-                    'tierBased': False,
+                    'tierBased': True,
                     'percentage': True,
-                    'taker': 0.001,
-                    'maker': 0.001,
+                    'taker': self.parse_number('0.001'),
+                    'maker': self.parse_number('0.001'),
+                    'tiers': {
+                        'taker': [
+                            [self.parse_number('0'), self.parse_number('0.001')],
+                            [self.parse_number('50'), self.parse_number('0.001')],
+                            [self.parse_number('200'), self.parse_number('0.0009')],
+                            [self.parse_number('500'), self.parse_number('0.0008')],
+                            [self.parse_number('1000'), self.parse_number('0.0007')],
+                            [self.parse_number('2000'), self.parse_number('0.0007')],
+                            [self.parse_number('4000'), self.parse_number('0.0006')],
+                            [self.parse_number('8000'), self.parse_number('0.0005')],
+                            [self.parse_number('15000'), self.parse_number('0.00045')],
+                            [self.parse_number('25000'), self.parse_number('0.0004')],
+                            [self.parse_number('40000'), self.parse_number('0.00035')],
+                            [self.parse_number('60000'), self.parse_number('0.0003')],
+                            [self.parse_number('80000'), self.parse_number('0.00025')],
+                        ],
+                        'maker': [
+                            [self.parse_number('0'), self.parse_number('0.001')],
+                            [self.parse_number('50'), self.parse_number('0.0009')],
+                            [self.parse_number('200'), self.parse_number('0.0007')],
+                            [self.parse_number('500'), self.parse_number('0.0005')],
+                            [self.parse_number('1000'), self.parse_number('0.0003')],
+                            [self.parse_number('2000'), self.parse_number('0')],
+                            [self.parse_number('4000'), self.parse_number('0')],
+                            [self.parse_number('8000'), self.parse_number('0')],
+                            [self.parse_number('15000'), self.parse_number('-0.00005')],
+                            [self.parse_number('25000'), self.parse_number('-0.00005')],
+                            [self.parse_number('40000'), self.parse_number('-0.00005')],
+                            [self.parse_number('60000'), self.parse_number('-0.00005')],
+                            [self.parse_number('80000'), self.parse_number('-0.00005')],
+                        ],
+                    },
                 },
                 'funding': {
                     'tierBased': False,
@@ -1922,7 +1960,7 @@ class kucoin(Exchange):
             account['free'] = self.safe_string(data, 'availableBalance')
             account['total'] = self.safe_string(data, 'accountEquity')
             result[code] = account
-            return self.parse_balance(result)
+            return self.safe_balance(result)
         else:
             request = {
                 'type': type,
@@ -1955,7 +1993,7 @@ class kucoin(Exchange):
                     account['free'] = self.safe_string(balance, 'available')
                     account['used'] = self.safe_string(balance, 'holds')
                     result[code] = account
-            return self.parse_balance(result)
+            return self.safe_balance(result)
 
     def transfer(self, code, amount, fromAccount, toAccount, params={}):
         self.load_markets()

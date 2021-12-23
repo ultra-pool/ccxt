@@ -11,6 +11,7 @@ use \ccxt\ArgumentsRequired;
 use \ccxt\BadRequest;
 use \ccxt\InvalidAddress;
 use \ccxt\InvalidOrder;
+use \ccxt\NotSupported;
 
 class okex extends Exchange {
 
@@ -24,20 +25,29 @@ class okex extends Exchange {
             'pro' => true,
             'certified' => true,
             'has' => array(
+                'margin' => true,
+                'swap' => true,
+                'future' => true,
+                'addMargin' => true,
                 'cancelOrder' => true,
                 'CORS' => null,
                 'createOrder' => true,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => true,
+                'fetchBorrowRates' => true,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
-                'fetchDepositAddressByNetwork' => true,
+                'fetchDepositAddressesByNetwork' => true,
                 'fetchDeposits' => true,
                 'fetchFundingHistory' => true,
+                'fetchFundingRate' => true,
                 'fetchFundingRateHistory' => true,
                 'fetchIndexOHLCV' => true,
                 'fetchLedger' => true,
+                'fetchLeverage' => true,
                 'fetchMarkets' => true,
+                'fetchMarketsByType' => true,
                 'fetchMarkOHLCV' => true,
                 'fetchMyTrades' => true,
                 'fetchOHLCV' => true,
@@ -47,20 +57,20 @@ class okex extends Exchange {
                 'fetchOrderTrades' => true,
                 'fetchPosition' => true,
                 'fetchPositions' => true,
-                'fetchLeverage' => true,
                 'fetchStatus' => true,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
+                'fetchTickersByType' => true,
                 'fetchTime' => true,
                 'fetchTrades' => true,
+                'fetchTradingFee' => true,
                 'fetchWithdrawals' => true,
+                'reduceMargin' => true,
+                'setLeverage' => true,
+                'setMarginMode' => true,
+                'setPositionMode' => true,
                 'transfer' => true,
                 'withdraw' => true,
-                'setLeverage' => true,
-                'setPositionMode' => true,
-                'setMarginMode' => true,
-                'addMargin' => true,
-                'reduceMargin' => true,
             ),
             'timeframes' => array(
                 '1m' => '1m',
@@ -1413,7 +1423,7 @@ class okex extends Exchange {
         }
         $result['timestamp'] = $timestamp;
         $result['datetime'] = $this->iso8601($timestamp);
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function parse_funding_balance($response) {
@@ -1430,7 +1440,68 @@ class okex extends Exchange {
             $account['used'] = $this->safe_string($balance, 'frozenBal');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function parse_trading_fee($fee, $market = null) {
+        //
+        //     {
+        //         "category":"1",
+        //         "delivery":"",
+        //         "exercise":"",
+        //         "instType":"SPOT",
+        //         "level":"Lv1",
+        //         "maker":"-0.0008",
+        //         "taker":"-0.001",
+        //         "ts":"1639043138472"
+        //     }
+        //
+        return array(
+            'info' => $fee,
+            'symbol' => $this->safe_symbol(null, $market),
+            'maker' => $this->safe_number($fee, 'maker'),
+            'taker' => $this->safe_number($fee, 'taker'),
+        );
+    }
+
+    public function fetch_trading_fee($symbol, $params = array ()) {
+        $this->load_markets();
+        $market = $this->market($symbol);
+        $request = array(
+            'instType' => strtoupper($market['type']), // SPOT, MARGIN, SWAP, FUTURES, OPTION
+            // 'instId' => $market['id'], // only applicable to SPOT/MARGIN
+            // 'uly' => $market['id'], // only applicable to FUTURES/SWAP/OPTION
+            // 'category' => '1', // 1 = Class A, 2 = Class B, 3 = Class C, 4 = Class D
+        );
+        if ($market['spot']) {
+            $request['instId'] = $market['id'];
+        } else if ($market['swap'] || $market['futures'] || $market['option']) {
+            $request['uly'] = $market['baseId'] . '-' . $market['quoteId'];
+        } else {
+            throw new NotSupported($this->id . ' fetchTradingFee supports spot, swap, futures or option markets only');
+        }
+        $response = $this->privateGetAccountTradeFee (array_merge($request, $params));
+        //
+        //     {
+        //         "code":"0",
+        //         "data":array(
+        //             {
+        //                 "category":"1",
+        //                 "delivery":"",
+        //                 "exercise":"",
+        //                 "instType":"SPOT",
+        //                 "level":"Lv1",
+        //                 "maker":"-0.0008",
+        //                 "taker":"-0.001",
+        //                 "ts":"1639043138472"
+        //             }
+        //         ),
+        //         "msg":""
+        //     }
+        //
+        $data = $this->safe_value($response, 'data', array());
+        $first = $this->safe_value($data, 0, array());
+        return $this->parse_trading_fee($first, $market);
     }
 
     public function fetch_balance($params = array ()) {
@@ -3081,8 +3152,8 @@ class okex extends Exchange {
         $this->load_markets();
         $currency = $this->currency($code);
         $accountsByType = $this->safe_value($this->options, 'accountsByType', array());
-        $fromId = $this->safe_string($accountsByType, $fromAccount, $fromAccount);
-        $toId = $this->safe_string($accountsByType, $toAccount, $toAccount);
+        $fromId = $this->safe_string($accountsByType, $fromAccount);
+        $toId = $this->safe_string($accountsByType, $toAccount);
         if ($fromId === null) {
             $keys = is_array($accountsByType) ? array_keys($accountsByType) : array();
             throw new ExchangeError($this->id . ' $fromAccount must be one of ' . implode(', ', $keys));
@@ -3213,11 +3284,6 @@ class okex extends Exchange {
         // in the response above $nextFundingRate is actually two funding rates from now
         //
         $nextFundingRateTimestamp = $this->safe_integer($fundingRate, 'fundingTime');
-        $previousFundingTimestamp = null;
-        if ($nextFundingRateTimestamp !== null) {
-            // eight hours
-            $previousFundingTimestamp = $nextFundingRateTimestamp - 28800000;
-        }
         $marketId = $this->safe_string($fundingRate, 'instId');
         $symbol = $this->safe_symbol($marketId, $market);
         $nextFundingRate = $this->safe_number($fundingRate, 'fundingRate');
@@ -3234,9 +3300,9 @@ class okex extends Exchange {
             'datetime' => null,
             'previousFundingRate' => null,
             'nextFundingRate' => $nextFundingRate,
-            'previousFundingTimestamp' => $previousFundingTimestamp, // subtract 8 hours
+            'previousFundingTimestamp' => null,
             'nextFundingTimestamp' => $nextFundingRateTimestamp,
-            'previousFundingDatetime' => $this->iso8601($previousFundingTimestamp),
+            'previousFundingDatetime' => null,
             'nextFundingDatetime' => $this->iso8601($nextFundingRateTimestamp),
         );
     }
@@ -3548,12 +3614,82 @@ class okex extends Exchange {
         );
     }
 
+    public function fetch_borrow_rates($params = array ()) {
+        $this->load_markets();
+        $response = $this->privateGetAccountInterestRate ($params);
+        // {
+        //     "code" => "0",
+        //     "data" => array(
+        //         {
+        //             "ccy":"BTC",
+        //             "interestRate":"0.00000833"
+        //         }
+        //         ...
+        //     ),
+        // }
+        $timestamp = $this->milliseconds();
+        $data = $this->safe_value($response, 'data');
+        $rates = array();
+        for ($i = 0; $i < count($data); $i++) {
+            $rate = $data[$i];
+            $code = $this->safe_currency_code($this->safe_string($rate, 'ccy'));
+            $rates[$code] = array(
+                'currency' => $code,
+                'rate' => $this->safe_number($rate, 'interestRate'),
+                'period' => 86400000,
+                'timestamp' => $timestamp,
+                'datetime' => $this->iso8601($timestamp),
+                'info' => $rate,
+            );
+        }
+        return $rates;
+    }
+
+    public function fetch_borrow_rate($code, $params = array ()) {
+        $this->load_markets();
+        $currency = $this->currency($code);
+        $request = array(
+            'ccy' => $currency['id'],
+        );
+        $response = $this->privateGetAccountInterestRate (array_merge($request, $params));
+        // {
+        //     "code" => "0",
+        //     "data":array(
+        //          {
+        //             "ccy":"USDT",
+        //             "interestRate":"0.00002065"
+        //          }
+        //          ...
+        //     ),
+        //     "msg":""
+        // }
+        $timestamp = $this->milliseconds();
+        $data = $this->safe_value($response, 'data');
+        $rate = $this->safe_value($data, 0);
+        return array(
+            'currency' => $code,
+            'rate' => $this->safe_number($rate, 'interestRate'),
+            'period' => 86400000,
+            'timestamp' => $timestamp,
+            'datetime' => $this->iso8601($timestamp),
+            'info' => $rate,
+        );
+    }
+
     public function reduce_margin($symbol, $amount, $params = array ()) {
         return $this->modify_margin_helper($symbol, $amount, 'reduce', $params);
     }
 
     public function add_margin($symbol, $amount, $params = array ()) {
         return $this->modify_margin_helper($symbol, $amount, 'add', $params);
+    }
+
+    public function set_sandbox_mode($enable) {
+        if ($enable) {
+            $this->headers['x-simulated-trading'] = 1;
+        } else {
+            $this->headers['x-simulated-trading'] = null;
+        }
     }
 
     public function handle_errors($httpCode, $reason, $url, $method, $headers, $body, $response, $requestHeaders, $requestBody) {

@@ -35,7 +35,7 @@ class ftx(Exchange):
         return self.deep_extend(super(ftx, self).describe(), {
             'id': 'ftx',
             'name': 'FTX',
-            'countries': ['HK'],
+            'countries': ['BS'],  # Bahamas
             'rateLimit': 100,
             'certified': True,
             'pro': True,
@@ -55,11 +55,17 @@ class ftx(Exchange):
                 },
             },
             'has': {
+                'margin': True,
+                'swap': True,
+                'future': True,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'createOrder': True,
                 'editOrder': True,
                 'fetchBalance': True,
+                'fetchBorrowRate': True,
+                'fetchBorrowRateHistory': False,
+                'fetchBorrowRates': True,
                 'fetchClosedOrders': None,
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
@@ -78,6 +84,7 @@ class ftx(Exchange):
                 'fetchOrder': True,
                 'fetchOrderBook': True,
                 'fetchOrders': True,
+                'fetchOrderTrades': True,
                 'fetchPositions': True,
                 'fetchPremiumIndexOHLCV': False,
                 'fetchTicker': True,
@@ -147,8 +154,6 @@ class ftx(Exchange):
                         'nft/collections',
                         # ftx pay
                         'ftxpay/apps/{user_specific_id}/details',
-                        # pnl
-                        'pnl/historical_changes',
                     ],
                     'post': [
                         'ftxpay/apps/{user_specific_id}/orders',
@@ -218,6 +223,8 @@ class ftx(Exchange):
                         'nft/gallery_settings',
                         # latency statistics
                         'stats/latency_stats',
+                        # pnl
+                        'pnl/historical_changes',
                     ],
                     'post': [
                         # subaccounts
@@ -292,7 +299,7 @@ class ftx(Exchange):
                             [self.parse_number('2000000'), self.parse_number('0.0006')],
                             [self.parse_number('5000000'), self.parse_number('0.00055')],
                             [self.parse_number('10000000'), self.parse_number('0.0005')],
-                            [self.parse_number('25000000'), self.parse_number('0.045')],
+                            [self.parse_number('25000000'), self.parse_number('0.0045')],
                             [self.parse_number('50000000'), self.parse_number('0.0004')],
                         ],
                         'maker': [
@@ -901,24 +908,21 @@ class ftx(Exchange):
         timestamp = self.parse8601(self.safe_string(trade, 'time'))
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'size')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         if (symbol is None) and (market is not None):
             symbol = market['symbol']
         side = self.safe_string(trade, 'side')
         fee = None
-        feeCost = self.safe_number(trade, 'fee')
-        if feeCost is not None:
+        feeCostString = self.safe_string(trade, 'fee')
+        if feeCostString is not None:
             feeCurrencyId = self.safe_string(trade, 'feeCurrency')
             feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
-                'rate': self.safe_number(trade, 'feeRate'),
+                'rate': self.safe_string(trade, 'feeRate'),
             }
         orderId = self.safe_string(trade, 'orderId')
-        return {
+        return self.safe_trade({
             'info': trade,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -928,11 +932,11 @@ class ftx(Exchange):
             'type': None,
             'takerOrMaker': takerOrMaker,
             'side': side,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': fee,
-        }
+        }, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
@@ -1100,7 +1104,7 @@ class ftx(Exchange):
             account['free'] = self.safe_string_2(balance, 'availableWithoutBorrow', 'free')
             account['total'] = self.safe_string(balance, 'total')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def parse_order_status(self, status):
         statuses = {
@@ -1638,6 +1642,12 @@ class ftx(Exchange):
         result = self.safe_value(response, 'result', [])
         return self.parse_orders(result, market, since, limit)
 
+    async def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
+        request = {
+            'orderId': id,
+        }
+        return await self.fetch_my_trades(symbol, since, limit, self.extend(request, params))
+
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         await self.load_markets()
         market, marketId = self.get_market_params(symbol, 'market', params)
@@ -1816,7 +1826,7 @@ class ftx(Exchange):
             'initialMarginPercentage': self.parse_number(initialMarginPercentage),
             'maintenanceMargin': self.parse_number(maintenanceMarginString),
             'maintenanceMarginPercentage': self.parse_number(maintenanceMarginPercentageString),
-            'entryPrice': None,
+            'entryPrice': self.parse_number(entryPriceString),
             'notional': self.parse_number(notionalString),
             'leverage': leverage,
             'unrealizedPnl': self.parse_number(unrealizedPnlString),
@@ -2021,6 +2031,12 @@ class ftx(Exchange):
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         request = '/api/' + self.implode_params(path, params)
+        signOptions = self.safe_value(self.options, 'sign', {})
+        headerPrefix = self.safe_string(signOptions, self.hostname, 'FTX')
+        subaccountField = headerPrefix + '-SUBACCOUNT'
+        chosenSubaccount = self.safe_string_2(params, subaccountField, 'subaccount')
+        if chosenSubaccount is not None:
+            params = self.omit(params, [subaccountField, 'subaccount'])
         query = self.omit(params, self.extract_params(path))
         baseUrl = self.implode_hostname(self.urls['api'][api])
         url = baseUrl + request
@@ -2039,14 +2055,11 @@ class ftx(Exchange):
                 auth += body
                 headers['Content-Type'] = 'application/json'
             signature = self.hmac(self.encode(auth), self.encode(self.secret), hashlib.sha256)
-            options = self.safe_value(self.options, 'sign', {})
-            headerPrefix = self.safe_string(options, self.hostname, 'FTX')
-            keyField = headerPrefix + '-KEY'
-            tsField = headerPrefix + '-TS'
-            signField = headerPrefix + '-SIGN'
-            headers[keyField] = self.apiKey
-            headers[tsField] = timestamp
-            headers[signField] = signature
+            headers[headerPrefix + '-KEY'] = self.apiKey
+            headers[headerPrefix + '-TS'] = timestamp
+            headers[headerPrefix + '-SIGN'] = signature
+            if chosenSubaccount is not None:
+                headers[subaccountField] = chosenSubaccount
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
@@ -2145,9 +2158,6 @@ class ftx(Exchange):
         nextFundingRate = self.safe_number(fundingRate, 'nextFundingRate')
         nextFundingRateDatetimeRaw = self.safe_string(fundingRate, 'nextFundingTime')
         nextFundingRateTimestamp = self.parse8601(nextFundingRateDatetimeRaw)
-        previousFundingTimestamp = None
-        if nextFundingRateTimestamp is not None:
-            previousFundingTimestamp = nextFundingRateTimestamp - 3600000
         estimatedSettlePrice = self.safe_number(fundingRate, 'predictedExpirationPrice')
         return {
             'info': fundingRate,
@@ -2160,9 +2170,9 @@ class ftx(Exchange):
             'datetime': None,
             'previousFundingRate': None,
             'nextFundingRate': nextFundingRate,
-            'previousFundingTimestamp': previousFundingTimestamp,  # subtract 8 hours
+            'previousFundingTimestamp': None,
             'nextFundingTimestamp': nextFundingRateTimestamp,
-            'previousFundingDatetime': self.iso8601(previousFundingTimestamp),
+            'previousFundingDatetime': None,
             'nextFundingDatetime': self.iso8601(nextFundingRateTimestamp),
         }
 
@@ -2186,3 +2196,35 @@ class ftx(Exchange):
         #
         result = self.safe_value(response, 'result', {})
         return self.parse_funding_rate(result, market)
+
+    async def fetch_borrow_rates(self, params={}):
+        await self.load_markets()
+        response = await self.privateGetSpotMarginBorrowRates()
+        #
+        # {
+        #     "success":true,
+        #     "result":[
+        #         {
+        #             "coin": "1INCH",
+        #             "previous": 0.0000462375,
+        #             "estimate": 0.0000462375
+        #         }
+        #         ...
+        #     ]
+        # }
+        #
+        timestamp = self.milliseconds()
+        result = self.safe_value(response, 'result')
+        rates = {}
+        for i in range(0, len(result)):
+            rate = result[i]
+            code = self.safe_currency_code(self.safe_string(rate, 'coin'))
+            rates[code] = {
+                'currency': code,
+                'rate': self.safe_number(rate, 'previous'),
+                'period': 3600000,
+                'timestamp': timestamp,
+                'datetime': self.iso8601(timestamp),
+                'info': rate,
+            }
+        return rates

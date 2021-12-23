@@ -11,7 +11,6 @@ from ccxt.base.errors import BadSymbol
 from ccxt.base.errors import OrderNotFound
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import ExchangeNotAvailable
-from ccxt.base.precise import Precise
 
 
 class bw(Exchange):
@@ -59,8 +58,6 @@ class bw(Exchange):
                 'fetchTradingLimits': None,
                 'fetchTransactions': None,
                 'fetchWithdrawals': True,
-                'privateAPI': None,
-                'publicAPI': None,
                 'withdraw': None,
             },
             'timeframes': {
@@ -469,9 +466,6 @@ class bw(Exchange):
         timestamp = self.safe_timestamp(trade, 2)
         priceString = self.safe_string(trade, 5)
         amountString = self.safe_string(trade, 6)
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         marketId = self.safe_string(trade, 1)
         symbol = None
         if marketId is not None:
@@ -487,7 +481,7 @@ class bw(Exchange):
             symbol = market['symbol']
         sideString = self.safe_string(trade, 4)
         side = 'sell' if (sideString == 'ask') else 'buy'
-        return {
+        return self.safe_trade({
             'id': None,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -496,12 +490,12 @@ class bw(Exchange):
             'type': 'limit',
             'side': side,
             'takerOrMaker': None,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': None,
             'info': trade,
-        }
+        }, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
@@ -614,7 +608,7 @@ class bw(Exchange):
             account['free'] = self.safe_string(balance, 'amount')
             account['used'] = self.safe_string(balance, 'freeze')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         if price is None:

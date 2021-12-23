@@ -638,7 +638,7 @@ module.exports = class gemini extends Exchange {
             account['total'] = this.safeString (balance, 'amount');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     parseOrder (order, market = undefined) {
@@ -719,11 +719,13 @@ module.exports = class gemini extends Exchange {
             throw new ExchangeError (this.id + ' allows limit orders only');
         }
         const nonce = this.nonce ();
+        const amountString = this.amountToPrecision (symbol, amount);
+        const priceString = this.priceToPrecision (symbol, price);
         const request = {
             'client_order_id': nonce.toString (),
             'symbol': this.marketId (symbol),
-            'amount': amount.toString (),
-            'price': price.toString (),
+            'amount': amountString,
+            'price': priceString,
             'side': side,
             'type': 'exchange limit', // gemini allows limit orders only
         };

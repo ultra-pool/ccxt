@@ -16,7 +16,6 @@ from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidAddress
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
-from ccxt.base.errors import NotSupported
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.decimal_to_precision import TICK_SIZE
 from ccxt.base.precise import Precise
@@ -33,6 +32,7 @@ class mexc(Exchange):
             'version': 'v2',
             'certified': True,
             'has': {
+                'addMargin': True,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'createMarketOrder': False,
@@ -42,22 +42,28 @@ class mexc(Exchange):
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
-                'fetchDepositAddressByNetwork': True,
+                'fetchDepositAddressesByNetwork': True,
                 'fetchDeposits': True,
+                'fetchFundingRateHistory': True,
                 'fetchMarkets': True,
+                'fetchMarketsByType': True,
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
+                'fetchOrdersByState': True,
                 'fetchOrderTrades': True,
                 'fetchPosition': True,
                 'fetchPositions': True,
                 'fetchStatus': True,
                 'fetchTicker': True,
+                'fetchTickers': True,
                 'fetchTime': True,
                 'fetchTrades': True,
-                'fetchWIthdrawals': True,
+                'fetchWithdrawals': True,
+                'reduceMargin': True,
+                'setLeverage': True,
                 'withdraw': True,
             },
             'timeframes': {
@@ -73,7 +79,7 @@ class mexc(Exchange):
                 'logo': 'https://user-images.githubusercontent.com/1294454/137283979-8b2a818d-8633-461b-bfca-de89e8c446b2.jpg',
                 'api': {
                     'spot': {
-                        'public': 'https://www.mxc.com/open/api/v2',
+                        'public': 'https://www.mexc.com/open/api/v2',
                         'private': 'https://www.mexc.com/open/api/v2',
                     },
                     'contract': {
@@ -237,6 +243,9 @@ class mexc(Exchange):
                 'COFI': 'COFIX',  # conflict with CoinFi
                 'DFT': 'dFuture',
                 'DRK': 'DRK',
+                'FLUX1': 'FLUX',  # switched places
+                'FLUX': 'FLUX1',  # switched places
+                'FREE': 'FreeRossDAO',  # conflict with FREE Coin
                 'HERO': 'Step Hero',  # conflict with Metahero
                 'MIMO': 'Mimosa',
                 'PROS': 'Pros.Finance',  # conflict with Prosper
@@ -343,7 +352,7 @@ class mexc(Exchange):
             id = self.safe_string(currency, 'currency')
             code = self.safe_currency_code(id)
             name = self.safe_string(currency, 'full_name')
-            currencyActive = None
+            currencyActive = False
             currencyPrecision = None
             currencyFee = None
             currencyWithdrawMin = None
@@ -357,7 +366,7 @@ class mexc(Exchange):
                 isDepositEnabled = self.safe_value(chain, 'is_deposit_enabled', False)
                 isWithdrawEnabled = self.safe_value(chain, 'is_withdraw_enabled', False)
                 active = (isDepositEnabled and isWithdrawEnabled)
-                currencyActive = active if (currencyActive is None) else currencyActive
+                currencyActive = active or currencyActive
                 precisionDigits = self.safe_integer(chain, 'precision')
                 precision = 1 / math.pow(10, precisionDigits)
                 withdrawMin = self.safe_string(chain, 'withdraw_limit_min')
@@ -481,42 +490,47 @@ class mexc(Exchange):
             id = self.safe_string(market, 'symbol')
             baseId = self.safe_string(market, 'baseCoin')
             quoteId = self.safe_string(market, 'quoteCoin')
+            settleId = self.safe_string(market, 'settleCoin')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = id
-            precision = {
-                'price': self.safe_number(market, 'priceUnit'),
-                'amount': self.safe_number(market, 'volUnit'),
-            }
-            taker = self.safe_number(market, 'takerFeeRate')
-            maker = self.safe_number(market, 'makerFeeRate')
+            settle = self.safe_currency_code(settleId)
             state = self.safe_string(market, 'state')
-            active = (state == '0')
-            type = 'swap'
-            swap = True
-            spot = False
-            contractSize = self.safe_string(market, 'contractSize')
-            linear = True
-            inverse = False
-            result.append(self.extend(self.fees['trading'], {
-                'info': market,
+            result.append({
                 'id': id,
-                'symbol': symbol,
+                'symbol': base + '/' + quote + ':' + settle,
                 'base': base,
                 'quote': quote,
+                'settle': settle,
                 'baseId': baseId,
                 'quoteId': quoteId,
-                'type': type,
-                'swap': swap,
-                'spot': spot,
-                'contractSize': contractSize,
-                'linear': linear,
-                'inverse': inverse,
-                'active': active,
-                'taker': taker,
-                'maker': maker,
-                'precision': precision,
+                'settleId': settleId,
+                'type': 'swap',
+                'spot': False,
+                'margin': False,
+                'swap': True,
+                'futures': False,
+                'option': False,
+                'derivative': True,
+                'contract': True,
+                'linear': True,
+                'inverse': False,
+                'taker': self.safe_number(market, 'takerFeeRate'),
+                'maker': self.safe_number(market, 'makerFeeRate'),
+                'contractSize': self.safe_string(market, 'contractSize'),
+                'active': (state == '0'),
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'price': self.safe_number(market, 'priceUnit'),
+                    'amount': self.safe_number(market, 'volUnit'),
+                },
                 'limits': {
+                    'leverage': {
+                        'min': self.safe_number(market, 'minLeverage'),
+                        'max': self.safe_number(market, 'maxLeverage'),
+                    },
                     'amount': {
                         'min': self.safe_number(market, 'minVol'),
                         'max': self.safe_number(market, 'maxVol'),
@@ -530,7 +544,8 @@ class mexc(Exchange):
                         'max': None,
                     },
                 },
-            }))
+                'info': market,
+            })
         return result
 
     def fetch_spot_markets(self, params={}):
@@ -571,33 +586,44 @@ class mexc(Exchange):
             quantityScale = self.safe_integer(market, 'quantity_scale')
             pricePrecision = 1 / math.pow(10, priceScale)
             quantityPrecision = 1 / math.pow(10, quantityScale)
-            precision = {
-                'price': pricePrecision,
-                'amount': quantityPrecision,
-            }
-            taker = self.safe_number(market, 'taker_fee_rate')
-            maker = self.safe_number(market, 'maker_fee_rate')
             state = self.safe_string(market, 'state')
-            active = (state == 'ENABLED')
             type = 'spot'
-            swap = False
-            spot = True
-            result.append(self.extend(self.fees['trading'], {
-                'info': market,
+            result.append({
                 'id': id,
                 'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': None,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': None,
                 'type': type,
-                'swap': swap,
-                'spot': spot,
-                'active': active,
-                'taker': taker,
-                'maker': maker,
-                'precision': precision,
+                'spot': True,
+                'margin': False,
+                'swap': False,
+                'future': False,
+                'option': False,
+                'active': (state == 'ENABLED'),
+                'derivative': False,
+                'contract': False,
+                'linear': None,
+                'inverse': None,
+                'taker': self.safe_number(market, 'taker_fee_rate'),
+                'maker': self.safe_number(market, 'maker_fee_rate'),
+                'contractSize': None,
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'price': pricePrecision,
+                    'amount': quantityPrecision,
+                },
                 'limits': {
+                    'leverage': {
+                        'min': None,
+                        'max': None,
+                    },
                     'amount': {
                         'min': None,
                         'max': None,
@@ -611,7 +637,8 @@ class mexc(Exchange):
                         'max': self.safe_number(market, 'max_amount'),
                     },
                 },
-            }))
+                'info': market,
+            })
         return result
 
     def fetch_tickers(self, symbols=None, params={}):
@@ -619,9 +646,10 @@ class mexc(Exchange):
         defaultType = self.safe_string_2(self.options, 'fetchTickers', 'defaultType', 'spot')
         type = self.safe_string(params, 'type', defaultType)
         query = self.omit(params, 'type')
-        if type != 'swap':
-            raise NotSupported(self.id + ' fetchTickers() is supported for swap markets only')
-        response = self.contractPublicGetTicker(query)
+        method = 'spotPublicGetMarketTicker'
+        if type == 'swap':
+            method = 'contractPublicGetTicker'
+        response = getattr(self, method)(self.extend(query))
         #
         #     {
         #         "success":true,
@@ -1136,7 +1164,7 @@ class mexc(Exchange):
                 account['free'] = self.safe_string(balance, 'availableBalance')
                 account['used'] = self.safe_string(balance, 'frozenBalance')
                 result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def safe_network(self, networkId):
         if networkId.find('BSC') >= 0:
@@ -1361,7 +1389,7 @@ class mexc(Exchange):
         updated = self.parse8601(self.safe_string(transaction, 'update_time'))
         currencyId = self.safe_string(transaction, 'currency')
         network = None
-        if currencyId.find('-') >= 0:
+        if (currencyId is not None) and (currencyId.find('-') >= 0):
             parts = currencyId.split('-')
             currencyId = self.safe_string(parts, 0)
             networkId = self.safe_string(parts, 1)
@@ -1973,3 +2001,66 @@ class mexc(Exchange):
             feedback = self.id + ' ' + body
             self.throw_exactly_matched_exception(self.exceptions['exact'], responseCode, feedback)
             raise ExchangeError(feedback)
+
+    def fetch_funding_rate_history(self, symbol=None, since=None, limit=None, params={}):
+        #
+        # Gets a history of funding rates with their timestamps
+        #  (param) symbol: Future currency pair
+        #  (param) limit: mexc limit is page_size default 20, maximum is 100
+        #  (param) since: not used by mexc
+        #  (param) params: Object containing more params for the request
+        #  return: [{symbol, fundingRate, timestamp, dateTime}]
+        #
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' fetchFundingRateHistory() requires a symbol argument')
+        self.load_markets()
+        market = self.market(symbol)
+        request = {
+            'symbol': market['id'],
+            # 'page_size': limit,  # optional
+            # 'page_num': 1,  # optional, current page number, default is 1
+        }
+        if limit is not None:
+            request['page_size'] = limit
+        response = self.contractPublicGetFundingRateHistory(self.extend(request, params))
+        #
+        # {
+        #     "success": True,
+        #     "code": 0,
+        #     "data": {
+        #         "pageSize": 2,
+        #         "totalCount": 21,
+        #         "totalPage": 11,
+        #         "currentPage": 1,
+        #         "resultList": [
+        #             {
+        #                 "symbol": "BTC_USDT",
+        #                 "fundingRate": 0.000266,
+        #                 "settleTime": 1609804800000
+        #             },
+        #             {
+        #                 "symbol": "BTC_USDT",
+        #                 "fundingRate": 0.00029,
+        #                 "settleTime": 1609776000000
+        #             }
+        #         ]
+        #     }
+        # }
+        #
+        data = self.safe_value(response, 'data')
+        result = self.safe_value(data, 'resultList')
+        rates = []
+        for i in range(0, len(result)):
+            entry = result[i]
+            marketId = self.safe_string(entry, 'symbol')
+            symbol = self.safe_symbol(marketId)
+            timestamp = self.safe_string(entry, 'settleTime')
+            rates.append({
+                'info': entry,
+                'symbol': symbol,
+                'fundingRate': self.safe_number(entry, 'fundingRate'),
+                'timestamp': timestamp,
+                'datetime': self.iso8601(timestamp),
+            })
+        sorted = self.sort_by(rates, 'timestamp')
+        return self.filter_by_symbol_since_limit(sorted, symbol, since, limit)

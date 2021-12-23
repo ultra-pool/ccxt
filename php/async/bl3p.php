@@ -14,7 +14,7 @@ class bl3p extends Exchange {
         return $this->deep_extend(parent::describe (), array(
             'id' => 'bl3p',
             'name' => 'BL3P',
-            'countries' => array( 'NL', 'EU' ), // Netherlands, EU
+            'countries' => array( 'NL' ), // Netherlands
             'rateLimit' => 1000,
             'version' => '1',
             'comment' => 'An exchange market by BitonicNL',
@@ -88,7 +88,7 @@ class bl3p extends Exchange {
             $account['total'] = $this->safe_string($balance, 'value');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function parse_bid_ask($bidask, $priceKey = 0, $amountKey = 1) {

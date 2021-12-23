@@ -15,6 +15,7 @@ const {
     , unique
     , indexBy
     , sortBy
+    , sortBy2
     , groupBy
     , aggregate
     , uuid
@@ -61,7 +62,12 @@ module.exports = class Exchange {
             'pro': false, // if it is integrated with CCXT Pro for WebSocket support
             'alias': false, // whether this exchange is an alias to another exchange
             'has': {
-                'loadMarkets': true,
+                'publicAPI': true,
+                'privateAPI': true,
+                'margin': undefined,
+                'swap': undefined,
+                'future': undefined,
+                'addMargin': undefined,
                 'cancelAllOrders': undefined,
                 'cancelOrder': true,
                 'cancelOrders': undefined,
@@ -72,24 +78,47 @@ module.exports = class Exchange {
                 'createOrder': true,
                 'deposit': undefined,
                 'editOrder': 'emulated',
+                'fetchAccounts': undefined,
                 'fetchBalance': true,
                 'fetchBidsAsks': undefined,
+                'fetchBorrowRate': undefined,
+                'fetchBorrowRateHistory': undefined,
+                'fetchBorrowRatesPerSymbol': undefined,
+                'fetchBorrowRates': undefined,
+                'fetchCanceledOrders': undefined,
+                'fetchClosedOrder': undefined,
                 'fetchClosedOrders': undefined,
-                'fetchCurrencies': undefined,
+                'fetchCurrencies': 'emulated',
+                'fetchDeposit': undefined,
                 'fetchDepositAddress': undefined,
+                'fetchDepositAddresses': undefined,
+                'fetchDepositAddressesByNetwork': undefined,
                 'fetchDeposits': undefined,
+                'fetchFundingFee': undefined,
                 'fetchFundingFees': undefined,
+                'fetchFundingHistory': undefined,
+                'fetchFundingRate': undefined,
+                'fetchFundingRateHistory': undefined,
+                'fetchFundingRates': undefined,
+                'fetchIndexOHLCV': undefined,
                 'fetchL2OrderBook': true,
                 'fetchLedger': undefined,
+                'fetchLedgerEntry': undefined,
                 'fetchMarkets': true,
+                'fetchMarkOHLCV': undefined,
                 'fetchMyTrades': undefined,
                 'fetchOHLCV': 'emulated',
+                'fetchOpenOrder': undefined,
                 'fetchOpenOrders': undefined,
                 'fetchOrder': undefined,
                 'fetchOrderBook': true,
                 'fetchOrderBooks': undefined,
                 'fetchOrders': undefined,
                 'fetchOrderTrades': undefined,
+                'fetchPosition': undefined,
+                'fetchPositions': undefined,
+                'fetchPositionsRisk': undefined,
+                'fetchPremiumIndexOHLCV': undefined,
                 'fetchStatus': 'emulated',
                 'fetchTicker': true,
                 'fetchTickers': undefined,
@@ -99,10 +128,19 @@ module.exports = class Exchange {
                 'fetchTradingFees': undefined,
                 'fetchTradingLimits': undefined,
                 'fetchTransactions': undefined,
+                'fetchTransfers': undefined,
+                'fetchWithdrawAddress': undefined,
+                'fetchWithdrawAddressesByNetwork': undefined,
+                'fetchWithdrawal': undefined,
                 'fetchWithdrawals': undefined,
-                'privateAPI': true,
-                'publicAPI': true,
+                'loadLeverageBrackets': undefined,
+                'loadMarkets': true,
+                'reduceMargin': undefined,
+                'setLeverage': undefined,
+                'setMarginMode': undefined,
+                'setPositionMode': undefined,
                 'signIn': undefined,
+                'transfer': undefined,
                 'withdraw': undefined,
             },
             'urls': {
@@ -183,6 +221,7 @@ module.exports = class Exchange {
             'precisionMode': DECIMAL_PLACES,
             'paddingMode': NO_PADDING,
             'limits': {
+                'leverage': { 'min': undefined, 'max': undefined },
                 'amount': { 'min': undefined, 'max': undefined },
                 'price': { 'min': undefined, 'max': undefined },
                 'cost': { 'min': undefined, 'max': undefined },
@@ -551,7 +590,7 @@ module.exports = class Exchange {
         headers = this.setHeaders (headers)
 
         if (this.verbose) {
-            this.log ("fetch:\n", this.id, method, url, "\nRequest:\n", headers, "\n", body, "\n")
+            this.log ("fetch Request:\n", this.id, method, url, "\nRequestHeaders:\n", headers, "\nRequestBody:\n", body, "\n")
         }
 
         return this.executeRestRequest (url, method, headers, body)
@@ -644,7 +683,7 @@ module.exports = class Exchange {
                 this.last_http_response = responseBuffer
             }
             if (this.verbose) {
-                this.log ("handleRestResponse:\n", this.id, method, url, response.status, response.statusText, "\nResponse:\n", responseHeaders, "ZIP redacted", "\n")
+                this.log ("handleRestResponse:\n", this.id, method, url, response.status, response.statusText, "\nResponseHeaders:\n", responseHeaders, "ZIP redacted", "\n")
             }
             // no error handler needed, because it would not be a zip response in case of an error
             return responseBuffer;
@@ -663,7 +702,7 @@ module.exports = class Exchange {
                 this.last_json_response = json
             }
             if (this.verbose) {
-                this.log ("handleRestResponse:\n", this.id, method, url, response.status, response.statusText, "\nResponse:\n", responseHeaders, "\n", responseBody, "\n")
+                this.log ("handleRestResponse:\n", this.id, method, url, response.status, response.statusText, "\nResponseHeaders:\n", responseHeaders, "\nResponseBody:\n", responseBody, "\n")
             }
             this.handleErrors (response.status, response.statusText, url, method, responseHeaders, responseBody, json, requestHeaders, requestBody)
             this.handleHttpStatusCode (response.status, response.statusText, url, method, responseBody)
@@ -732,7 +771,8 @@ module.exports = class Exchange {
             return this.markets
         }
         let currencies = undefined
-        if (this.has.fetchCurrencies) {
+        // only call if exchange API provides endpoint (true), thus avoid emulated versions ('emulated')
+        if (this.has.fetchCurrencies === true) {
             currencies = await this.fetchCurrencies ()
         }
         const markets = await this.fetchMarkets (params)
@@ -1023,7 +1063,7 @@ module.exports = class Exchange {
         }
     }
 
-    parseBalance (balance, legacy = false) {
+    safeBalance (balance, legacy = false) {
 
         const codes = Object.keys (this.omit (balance, [ 'info', 'timestamp', 'datetime', 'free', 'used', 'total' ]));
 
@@ -1260,7 +1300,7 @@ module.exports = class Exchange {
 
     parseTrades (trades, market = undefined, since = undefined, limit = undefined, params = {}) {
         let result = Object.values (trades || []).map ((trade) => this.extend (this.parseTrade (trade, market), params))
-        result = sortBy (result, 'timestamp')
+        result = sortBy2 (result, 'timestamp', 'id')
         const symbol = (market !== undefined) ? market['symbol'] : undefined
         const tail = since === undefined
         return this.filterBySymbolSinceLimit (result, symbol, since, limit, tail)
@@ -1606,7 +1646,7 @@ module.exports = class Exchange {
         //
         //     [
         //         { 'currency': 'BTC', 'cost': '0.3'  },
-        //         { 'currency': 'BTC', 'cost': '0.7', 'rate': '0.00123' },
+        //         { 'currency': 'BTC', 'cost': '0.6', 'rate': '0.00123' },
         //         { 'currency': 'BTC', 'cost': '0.5', 'rate': '0.00456' },
         //         { 'currency': 'USDT', 'cost': '12.3456' },
         //     ]
@@ -1615,7 +1655,7 @@ module.exports = class Exchange {
         //
         //     [
         //         { 'currency': 'BTC', 'cost': 0.3  },
-        //         { 'currency': 'BTC', 'cost': 0.7, 'rate': 0.00123 },
+        //         { 'currency': 'BTC', 'cost': 0.6, 'rate': 0.00123 },
         //         { 'currency': 'BTC', 'cost': 0.5, 'rate': 0.00456 },
         //         { 'currency': 'USDT', 'cost': 12.3456 },
         //     ]
@@ -1697,10 +1737,10 @@ module.exports = class Exchange {
             const reducedFees = this.reduceFees ? this.reduceFeesByCurrency (fees, true) : fees;
             const reducedLength = reducedFees.length;
             for (let i = 0; i < reducedLength; i++) {
-                reducedFees[i]['cost'] = this.parseNumber (reducedFees[i]['cost']);
+                reducedFees[i]['cost'] = this.safeNumber (reducedFees[i], 'cost');
             }
             if (!parseFee && (reducedLength === 0)) {
-                fee['cost'] = this.parseNumber (this.safeString (fee, 'cost'));
+                fee['cost'] = this.safeNumber (fee, 'cost');
                 reducedFees.push (fee);
             }
             if (parseFees) {
@@ -1711,7 +1751,7 @@ module.exports = class Exchange {
             }
             const tradeFee = this.safeValue (trade, 'fee');
             if (tradeFee !== undefined) {
-                tradeFee['cost'] = this.parseNumber (this.safeString (tradeFee, 'cost'));
+                tradeFee['cost'] = this.safeNumber (tradeFee, 'cost');
                 trade['fee'] = tradeFee;
             }
         }
@@ -1860,7 +1900,8 @@ module.exports = class Exchange {
         const parseFilled = (filled === undefined);
         const parseCost = (cost === undefined);
         const parseLastTradeTimeTimestamp = (lastTradeTimeTimestamp === undefined);
-        const parseFee = this.safeValue (order, 'fee') === undefined;
+        const fee = this.safeValue (order, 'fee');
+        const parseFee = (fee === undefined);
         const parseFees = this.safeValue (order, 'fees') === undefined;
         const shouldParseFees = parseFee || parseFees;
         const fees = this.safeValue (order, 'fees', []);
@@ -1926,7 +1967,8 @@ module.exports = class Exchange {
                 reducedFees[i]['cost'] = this.parseNumber (reducedFees[i]['cost']);
             }
             if (!parseFee && (reducedLength === 0)) {
-                reducedFees.push (order['fee']);
+                fee['cost'] = this.safeNumber (fee, 'cost');
+                reducedFees.push (fee);
             }
             if (parseFees) {
                 order['fees'] = reducedFees;
@@ -2058,5 +2100,26 @@ module.exports = class Exchange {
         } else {
             throw new NotSupported (this.id + ' ' + key + ' does not have a value in mapping')
         }
+    }
+
+    async fetchBorrowRate (code, params = {}) {
+        await this.loadMarkets ();
+        if (!this.has['fetchBorrowRates']) {
+            throw new NotSupported (this.id + 'fetchBorrowRate() is not supported yet')
+        }
+        const borrowRates = await this.fetchBorrowRates (params);
+        const rate = this.safeValue (borrowRates, code);
+        if (rate === undefined) {
+            throw new ExchangeError (this.id + 'fetchBorrowRate() could not find the borrow rate for currency code ' + code);
+        }
+        return rate;
+    }
+
+    handleMarketTypeAndParams (methodName, market = undefined, params = {}) {
+        const defaultType = this.safeString2 (this.options, methodName, 'defaultType', 'spot');
+        const marketType = (market === undefined) ? defaultType : market['type'];
+        const type = this.safeString (params, 'type', marketType);
+        params = this.omit (params, 'type');
+        return [ type, params ];
     }
 }

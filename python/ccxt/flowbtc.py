@@ -135,7 +135,7 @@ class flowbtc(Exchange):
             account['free'] = self.safe_string(balance, 'balance')
             account['total'] = self.safe_string(balance, 'hold')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -236,7 +236,7 @@ class flowbtc(Exchange):
                 'serverOrderId': id,
             }
             return self.privatePostCancelOrder(self.extend(request, params))
-        raise ExchangeError(self.id + ' cancelOrder() requires an `ins` symbol parameter for cancelling an order')
+        raise ExchangeError(self.id + ' cancelOrder() requires an `ins` parameter for cancelling an order')
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         url = self.urls['api'] + '/' + self.version + '/' + path
